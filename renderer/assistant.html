@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+    <title>麻衣的现实生活与知识库</title>
+    <link rel="stylesheet" href="assistant.css">
+    <link rel="stylesheet" href="light-theme.css">
+    <link rel="stylesheet" href="workspace-layout.css">
+    <link rel="stylesheet" href="codex-ui.css">
+    <link rel="stylesheet" href="mai-design.css">
+  </head>
+  <body class="ui-assistant">
+    <main class="app-shell">
+      <header class="hero">
+        <img src="../assets/mai-profile.png" alt="麻衣头像">
+        <div>
+          <p class="eyebrow">MAI SAKURAJIMA · v6.0.0</p>
+          <h1>现实生活与知识库</h1>
+          <p id="hero-summary">把今天、承诺、专注和资料放在同一条连续生活里。</p>
+        </div>
+        <span id="privacy-chip" class="privacy-chip">本地优先</span>
+      </header>
+
+      <nav class="tabs" aria-label="功能页面">
+        <button class="tab is-active" data-tab="today" type="button">今天</button>
+        <button class="tab" data-tab="calendar" type="button">日历待办</button>
+        <button class="tab" data-tab="focus" type="button">学习专注</button>
+        <button class="tab" data-tab="promises" type="button">承诺</button>
+        <button class="tab" data-tab="usage" type="button">应用感知</button>
+        <button class="tab" data-tab="knowledge" type="button">知识库</button>
+        <button class="tab" data-tab="settings" type="button">设置</button>
+      </nav>
+
+      <p id="notice" class="notice" role="status"></p>
+
+      <section id="today-panel" class="panel">
+        <div class="dashboard-grid">
+          <article class="feature-card feature-card--accent">
+            <span class="card-label">麻衣此刻</span>
+            <h2 id="mai-activity">正在同步现实时间…</h2>
+            <p id="mai-detail"></p>
+            <div class="metric-row"><span id="mai-mood"></span><span id="mai-plan"></span></div>
+          </article>
+          <article class="feature-card">
+            <span class="card-label">今天的节奏</span>
+            <h2 id="today-focus">专注 0 分钟</h2>
+            <p id="today-usage">应用感知尚未开启</p>
+            <button id="open-timer" class="button button--primary" type="button">开始一段专注</button>
+          </article>
+        </div>
+        <div class="section-heading"><div><span class="card-label">DAILY RHYTHM</span><h2>简报与复盘</h2></div></div>
+        <div class="action-row">
+          <button id="create-morning" class="button button--secondary" type="button">生成今日晨报</button>
+          <button id="create-review" class="button button--secondary" type="button">生成晚间复盘</button>
+        </div>
+        <div id="brief-list" class="card-list"></div>
+      </section>
+
+      <section id="calendar-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">CALENDAR</span><h2>日历与待办</h2></div><p>明确时间的事项会进入主动提醒，但不会反复催促。</p></div>
+        <form id="calendar-form" class="editor-grid">
+          <input id="calendar-title" maxlength="100" placeholder="事项名称" required>
+          <input id="calendar-due" type="datetime-local" required>
+          <select id="calendar-kind"><option value="todo">待办</option><option value="appointment">约定</option><option value="anniversary">纪念日</option></select>
+          <select id="calendar-recurring"><option value="none">不重复</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option></select>
+          <button class="button button--primary" type="submit">加入日程</button>
+        </form>
+        <div id="calendar-list" class="card-list"></div>
+      </section>
+
+      <section id="focus-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">FOCUS</span><h2>学习模式与番茄钟</h2></div><p>结束后自动计入当天专注统计。</p></div>
+        <form id="focus-form" class="editor-grid">
+          <input id="focus-label" maxlength="80" value="学习" placeholder="这次要做什么">
+          <select id="focus-mode"><option value="study">学习</option><option value="reading">阅读</option><option value="work">工作</option><option value="creative">创作</option><option value="rest">休息</option><option value="custom">其他</option></select>
+          <input id="focus-minutes" type="number" min="1" max="180" value="25">
+          <button class="button button--primary" type="submit">开始专注</button>
+        </form>
+        <div id="focus-summary" class="summary-strip"></div>
+        <div id="focus-list" class="card-list"></div>
+      </section>
+
+      <section id="promises-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">PROMISES</span><h2>承诺兑现</h2></div><p>只记录有用户原话证据的承诺；同一项最多主动询问三次。</p></div>
+        <div id="promise-list" class="card-list"></div>
+      </section>
+
+      <section id="usage-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">ACTIVITY</span><h2>软件使用与工作时长</h2></div><p>只保存进程名称和聚合时长，不保存窗口标题、键盘输入、截图或文件内容。</p></div>
+        <article class="feature-card">
+          <span class="card-label">当前前台应用</span><h2 id="current-app">感知已关闭</h2>
+          <p id="usage-total"></p>
+        </article>
+        <div id="usage-list" class="usage-list"></div>
+      </section>
+
+      <section id="knowledge-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">KNOWLEDGE</span><h2>本地知识库</h2></div><p>PDF、笔记、课程资料和聊天导出记录均由你主动导入。</p></div>
+        <div class="knowledge-toolbar">
+          <select id="knowledge-library-select" aria-label="导入目标知识库"></select>
+          <button id="import-files" class="button button--primary" type="button">导入文件</button>
+          <button id="refresh-knowledge" class="button button--secondary" type="button">检查文件更新</button>
+        </div>
+        <form id="knowledge-search-form" class="search-row">
+          <input id="knowledge-search" type="search" maxlength="300" placeholder="在全部获准资料中本地搜索">
+          <button class="button button--secondary" type="submit">搜索</button>
+        </form>
+        <div id="knowledge-results" class="card-list"></div>
+        <details class="editor-details">
+          <summary>新建本地笔记</summary>
+          <form id="note-form" class="note-form">
+            <input id="note-title" maxlength="180" placeholder="笔记标题">
+            <textarea id="note-content" maxlength="2000000" placeholder="笔记内容"></textarea>
+            <button class="button button--primary" type="submit">保存并建立索引</button>
+          </form>
+        </details>
+        <details class="editor-details">
+          <summary>新建知识库与隐私边界</summary>
+          <form id="library-form" class="editor-grid">
+            <input id="library-name" maxlength="80" placeholder="知识库名称">
+            <select id="library-privacy"><option value="local">仅本地检索</option><option value="chat">允许参与聊天</option><option value="locked">锁定</option></select>
+            <button class="button button--secondary" type="submit">新建知识库</button>
+          </form>
+        </details>
+        <div id="library-list" class="library-list"></div>
+        <div id="document-list" class="card-list"></div>
+      </section>
+
+      <section id="settings-panel" class="panel is-hidden">
+        <div class="section-heading"><div><span class="card-label">PRIVACY & RHYTHM</span><h2>现实助理设置</h2></div></div>
+        <form id="assistant-settings-form" class="settings-form">
+          <label class="toggle-row"><span><strong>晨间简报</strong><small>到点后每天最多主动发送一次</small></span><input id="morning-enabled" type="checkbox" checked></label>
+          <label class="field-row"><span>晨报时间</span><input id="morning-time" type="time" value="08:00"></label>
+          <label class="toggle-row"><span><strong>晚间复盘</strong><small>依据真实完成记录整理，不虚构成果</small></span><input id="evening-enabled" type="checkbox" checked></label>
+          <label class="field-row"><span>复盘时间</span><input id="evening-time" type="time" value="21:30"></label>
+          <label class="toggle-row toggle-row--warning"><span><strong>允许识别前台应用</strong><small>默认关闭；只保存应用名称和聚合时长</small></span><input id="activity-enabled" type="checkbox"></label>
+          <label class="field-row field-row--stack"><span>不记录的应用（每行一个进程名）</span><textarea id="excluded-apps" rows="5"></textarea></label>
+          <label class="toggle-row"><span><strong>自动检查导入文件更新</strong><small>每五分钟比较文件大小与修改时间，只读取已导入文件</small></span><input id="knowledge-auto-refresh" type="checkbox" checked></label>
+          <button class="button button--primary" type="submit">保存设置</button>
+        </form>
+      </section>
+    </main>
+
+    <div id="knowledge-move-dialog" class="input-dialog-overlay input-dialog-overlay--hidden">
+      <section class="input-dialog-card" role="dialog" aria-modal="true" aria-labelledby="knowledge-move-title" aria-describedby="knowledge-move-description">
+        <div class="input-dialog-heading">
+          <div>
+            <p class="input-dialog-kicker">KNOWLEDGE</p>
+            <h2 id="knowledge-move-title">移动资料</h2>
+            <p id="knowledge-move-description">选择这份资料要归入的知识库。</p>
+          </div>
+          <button id="knowledge-move-close" class="input-dialog-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <form id="knowledge-move-form">
+          <label class="input-dialog-field" for="knowledge-move-select">
+            <span>目标知识库</span>
+            <select id="knowledge-move-select" required></select>
+          </label>
+          <p id="knowledge-move-error" class="input-dialog-error" role="alert"></p>
+          <div class="input-dialog-actions">
+            <button id="knowledge-move-cancel" class="input-dialog-button" type="button">取消</button>
+            <button class="input-dialog-button input-dialog-button--primary" type="submit">移动</button>
+          </div>
+        </form>
+      </section>
+    </div>
+    <script src="appearance.js"></script>
+    <script src="assistant.js"></script>
+  </body>
+</html>

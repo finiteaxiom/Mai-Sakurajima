@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+    <title>麻衣的番茄钟</title>
+    <link rel="stylesheet" href="timer.css">
+    <link rel="stylesheet" href="light-theme.css">
+    <link rel="stylesheet" href="codex-ui.css">
+    <link rel="stylesheet" href="mai-design.css">
+  </head>
+  <body class="ui-timer">
+    <main class="timer-app">
+      <header>
+        <div class="timer-mark" aria-hidden="true">♥</div>
+        <div>
+          <h1>麻衣的番茄钟</h1>
+          <p>专心做事，时间到了我会叫你。</p>
+        </div>
+      </header>
+
+      <section class="countdown-card" aria-live="polite">
+        <p id="timer-label" class="timer-label">准备开始</p>
+        <strong id="countdown">25:00</strong>
+        <p id="timer-status" class="timer-status">选择时长后开始</p>
+      </section>
+
+      <section class="timer-form">
+        <span class="field-title">专注时长</span>
+        <div class="presets" id="presets">
+          <button type="button" data-minutes="5">5 分钟</button>
+          <button type="button" data-minutes="15">15 分钟</button>
+          <button type="button" data-minutes="25" class="is-selected">25 分钟</button>
+          <button type="button" data-minutes="45">45 分钟</button>
+        </div>
+
+        <label class="field">
+          <span>自定义分钟数</span>
+          <input id="minutes" type="number" min="1" max="180" step="1" value="25">
+        </label>
+
+        <label class="field">
+          <span>专注模式</span>
+          <select id="focus-mode">
+            <option value="study">学习</option>
+            <option value="reading">阅读</option>
+            <option value="work">工作</option>
+            <option value="creative">创作</option>
+            <option value="rest">休息</option>
+            <option value="custom">其他</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>提醒内容</span>
+          <input id="reminder-label" type="text" maxlength="40" value="番茄钟" placeholder="例如：学习、写作、喝水">
+        </label>
+      </section>
+
+      <div id="notice" class="notice" role="status"></div>
+
+      <footer>
+        <button id="cancel-button" class="button button--secondary" type="button" disabled>取消计时</button>
+        <button id="start-button" class="button button--primary" type="button">开始专注</button>
+      </footer>
+      <p class="footnote">关闭窗口不会取消倒计时；完成后会自动写入今天的专注记录。</p>
+    </main>
+    <script src="appearance.js"></script>
+    <script src="timer.js"></script>
+  </body>
+</html>

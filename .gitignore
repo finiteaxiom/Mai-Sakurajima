@@ -1,0 +1,11 @@
+﻿node_modules/
+dist/
+out/
+release/
+*.log
+.env
+.env.*
+!.env.example
+*.tmp
+test/.smoke-*/
+test/.moments-smoke-user-data/

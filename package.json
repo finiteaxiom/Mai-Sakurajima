@@ -1,0 +1,124 @@
+{
+  "name": "mai-sakurajima",
+  "version": "7.1.0",
+  "description": "以对话、长期记忆、人格、语音和桌面陪伴为核心的 Mai Sakurajima Windows AI companion",
+  "main": "main.js",
+  "author": "Mai Sakurajima Contributors",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "diagnostics:summary": "node scripts/llm-diagnostic-summary.js",
+    "diagnostics:json-mode-smoke": "node scripts/deepseek-json-mode-smoke.js",
+    "diagnostics:real-mai-smoke": "node scripts/deepseek-real-mai-incremental-smoke.js",
+    "diagnostics:real-session-smoke": "node scripts/deepseek-real-mai-incremental-smoke.js --active-session",
+    "diagnostics:session-message-bisect": "node scripts/deepseek-real-mai-incremental-smoke.js --message-bisect",
+    "diagnostics:session-message-shape-audit": "node scripts/deepseek-real-mai-incremental-smoke.js --message-shape-audit",
+    "test": "node --test test/*.test.js && node test/migration-smoke-runner.js && node test/p0-chat-flow-smoke-runner.js"
+  },
+  "build": {
+    "appId": "com.mai.sakurajima.desktop",
+    "productName": "Mai Sakurajima",
+    "asar": true,
+    "npmRebuild": false,
+    "files": [
+      "main.js",
+      "window-manager.js",
+      "voice-ipc.js",
+      "assistant-ipc.js",
+      "timer-ipc.js",
+      "action-ipc.js",
+      "workspace-capability-gateway.js",
+      "workspace-capability-ipc.js",
+      "pet-visibility.js",
+      "automatic-backup-service.js",
+      "agent/**/*",
+      "work/**/*",
+      "companion-state.js",
+      "conversation-state.js",
+      "chat-runtime.js",
+      "chat-service.js",
+      "chat-request-service.js",
+      "chat-history-boundary.js",
+      "llm-cache-diagnostics.js",
+      "model-gateway.js",
+      "model-provider-registry.js",
+      "local-model-provider.js",
+      "deepseek-provider.js",
+      "deepseek-incremental-smoke.js",
+      "smoke-diagnostics.js",
+      "intelligence.js",
+      "memory-engine.js",
+      "memory-extractor.js",
+      "context-engine.js",
+      "world-engine.js",
+      "shared-life.js",
+      "life-hub.js",
+      "backup-engine.js",
+      "continuity-engine.js",
+      "life-assistant.js",
+      "activity-tracker.js",
+      "knowledge-engine.js",
+      "knowledge-importer.js",
+      "moments.js",
+      "local-tts-service.js",
+      "voice-emotion.js",
+      "deepseek-stream.js",
+      "voice-service.js",
+      "voice/**/*",
+      "voice-engine/**/*",
+      "persona.js",
+      "preload.js",
+      "storage.js",
+      "wallpaper-catalog.js",
+      "avatar-catalog.js",
+      "THIRD_PARTY_NOTICES.md",
+      "renderer/**/*",
+      "assets/mai-icon.ico",
+      "assets/mai-icon.png",
+      "assets/mai-profile.png",
+      "assets/spritesheet-original.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "asarUnpack": [
+      "voice/**/*.ps1",
+      "voice-engine/**/*"
+    ],
+    "win": {
+      "icon": "assets/mai-icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "Mai-Sakurajima-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mai Sakurajima",
+      "runAfterFinish": true,
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052"
+    }
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "jszip": "3.10.1",
+    "pdfjs-dist": "5.7.284"
+  }
+}

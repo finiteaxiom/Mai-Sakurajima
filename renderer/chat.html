@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; media-src 'self' data: blob:; style-src 'self'; script-src 'self'">
+    <title>Mai Sakurajima</title>
+    <link rel="stylesheet" href="chat.css">
+    <link rel="stylesheet" href="light-theme.css">
+    <link rel="stylesheet" href="workspace-layout.css">
+    <link rel="stylesheet" href="codex-ui.css">
+    <link rel="stylesheet" href="wallpaper.css">
+    <link rel="stylesheet" href="mai-design.css">
+  </head>
+  <body class="ui-chat">
+    <div id="wallpaper-layer" class="wallpaper-layer" aria-hidden="true"></div>
+    <main class="chat-app runtime-mode--chat" data-runtime-mode="chat">
+      <div class="workspace-topbar">
+        <button id="workspace-sidebar-toggle" class="workspace-chrome-button" type="button" aria-label="收起或展开侧边栏" title="收起或展开侧边栏">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="3"></rect><path d="M9 4v16"></path></svg>
+        </button>
+        <div id="runtime-switcher" class="runtime-switcher">
+          <button id="runtime-switcher-button" class="runtime-switcher-button" type="button" aria-label="切换 Chat 或 Work" aria-haspopup="menu" aria-controls="runtime-switcher-menu" aria-expanded="false">
+            <span id="runtime-current-label">Chat</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"></path></svg>
+          </button>
+          <div id="runtime-switcher-menu" class="runtime-switcher-menu" role="menu" hidden>
+            <button class="runtime-option" type="button" role="menuitemradio" aria-checked="true" data-runtime-mode="chat">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v11H9l-4 3V5Z"></path></svg>
+              <span class="runtime-option__body"><strong>Chat</strong><small>聊天、陪伴和共同生活</small></span>
+              <span class="runtime-option__check" aria-hidden="true">✓</span>
+            </button>
+            <button class="runtime-option" type="button" role="menuitemradio" aria-checked="false" data-runtime-mode="agent">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z"></path><path d="m8 9 2.5 2.5L8 14M13 14h3"></path></svg>
+              <span class="runtime-option__body"><strong>Work</strong><small>独立的工作空间</small></span>
+              <span class="runtime-option__check" aria-hidden="true">✓</span>
+            </button>
+          </div>
+        </div>
+        <div class="workspace-brand"><span id="workspace-location">陪伴与对话</span></div>
+        <div class="workspace-topbar__actions">
+          <button id="companion-inspector-toggle" class="workspace-chrome-button companion-inspector-toggle" type="button" aria-label="打开陪伴信息面板" title="陪伴信息" aria-controls="companion-context" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M9 4v16M13 9h3M13 13h3"></path></svg>
+          </button>
+          <button id="work-inspector-toggle" class="workspace-chrome-button work-inspector-toggle" type="button" aria-label="打开 Work 信息面板" title="Work 信息与 Workspace" aria-controls="action-context" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M9 4v16M13 9h3M13 13h3"></path></svg>
+          </button>
+          <button id="workspace-search-button" class="workspace-chrome-button" type="button" aria-label="搜索历史对话" title="搜索与历史">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"></circle><path d="m16 16 4.1 4.1"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <header class="chat-header">
+        <div class="sidebar-identity mode-feature mode-feature--chat">
+          <button id="mai-avatar-button" class="portrait-wrap avatar-trigger" type="button" aria-label="更换麻衣头像" title="更换麻衣头像" aria-haspopup="dialog"><img id="portrait" src="../assets/mai-profile.png" alt=""></button>
+          <div class="identity">
+            <h1>Mai Sakurajima</h1>
+            <p><span id="connection-dot" class="connection-dot"></span><span id="connection-label">正在检查连接…</span></p>
+            <p id="mood-label" class="mood-label">安静陪伴</p>
+          </div>
+        </div>
+        <nav class="header-actions mode-feature mode-feature--chat" aria-label="主要功能">
+          <button id="new-chat-button" class="icon-button nav-item nav-item--primary" type="button" aria-label="清空当前上下文并开始新对话" title="清空上下文 / 新对话" data-label="新对话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v8a3.5 3.5 0 0 1-3.5 3.5H8L4 21v-4.4A3.5 3.5 0 0 1 2.5 14V7A2.5 2.5 0 0 1 5 4.5Z"></path><path d="M12 8v7M8.5 11.5h7"></path></svg>
+          </button>
+          <button id="assistant-button" class="icon-button nav-item" type="button" aria-label="生活陪伴" title="每日简报、专注与生活陪伴" data-label="生活陪伴">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="m14.8 8.2-1.7 4.9-4.9 1.7 1.7-4.9 4.9-1.7Z"></path></svg>
+          </button>
+          <button id="life-button" class="icon-button nav-item" type="button" aria-label="日程与待办" title="日程、待办与关系面板" data-label="日程与待办">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3"></rect><path d="M7.5 3.5v4M16.5 3.5v4M3.5 10h17M8 14h3M8 17h7"></path></svg>
+          </button>
+          <button id="knowledge-button" class="icon-button nav-item" type="button" aria-label="个人资料库" title="个人资料库" data-label="个人资料库">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5h5.2c1.5 0 2.8 1.2 2.8 2.8v12.2c0-1.5-1.2-2.8-2.8-2.8H4V4.5Z"></path><path d="M20 4.5h-5.2c-1.5 0-2.8 1.2-2.8 2.8v12.2c0-1.5 1.2-2.8 2.8-2.8H20V4.5Z"></path></svg>
+          </button>
+          <button id="memory-button" class="icon-button nav-item" type="button" aria-label="长期记忆" title="长期记忆" data-label="长期记忆">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"></ellipse><path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path><path d="M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path></svg>
+          </button>
+          <button id="moments-button" class="icon-button nav-item" type="button" aria-label="私人朋友圈" title="麻衣的私人朋友圈" data-label="私人朋友圈">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="4"></rect><circle cx="9" cy="9" r="1.5"></circle><path d="m5.5 17 4.3-4 2.8 2.5 2.3-2.1 3.6 3.6"></path></svg>
+          </button>
+        </nav>
+        <section class="sidebar-section mode-feature mode-feature--chat" aria-labelledby="projects-heading">
+          <div class="sidebar-section__heading"><span id="projects-heading">共同计划</span><button id="shared-life-button" type="button" aria-label="管理共同计划" title="管理共同计划">＋</button></div>
+          <div id="companion-plan-list" class="sidebar-collection"></div>
+          <p id="companion-plan-empty" class="sidebar-empty">还没有共同计划</p>
+        </section>
+        <section class="sidebar-section sidebar-section--recent mode-feature mode-feature--chat" aria-labelledby="recent-heading">
+          <div class="sidebar-section__heading"><span id="recent-heading">最近</span><button id="history-button" type="button" aria-label="查看全部历史对话" title="全部历史">•••</button></div>
+          <div id="recent-list" class="sidebar-collection"></div>
+          <p id="recent-empty" class="sidebar-empty">还没有历史对话</p>
+        </section>
+        <div class="sidebar-tools mode-feature mode-feature--chat">
+          <button id="voice-call-button" class="icon-button nav-item" type="button" aria-label="和麻衣语音通话" title="实时语音通话" data-label="语音通话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 4.8 5.3c-1.1.7-.8 3.8 1.8 7.9s5.2 5.8 6.3 5.1l2.4-1.5-2.8-4.3-2.1 1.3c-.8-.6-1.6-1.6-2.3-2.7s-1.2-2.3-1.4-3.2l2.1-1.3-1.6-2.8Z"></path><path d="M14.2 5.4c1.8.4 3.2 1.8 3.6 3.6M14.8 2c3.3.7 5.9 3.3 6.6 6.6"></path></svg>
+          </button>
+          <button id="settings-button" class="icon-button nav-item" type="button" aria-label="设置" title="模型、声音与陪伴设置" data-label="设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"></path><circle cx="8" cy="7" r="2"></circle><circle cx="16" cy="17" r="2"></circle></svg>
+          </button>
+        </div>
+        <section id="agent-mode-sidebar" class="agent-mode-sidebar mode-feature mode-feature--agent" aria-labelledby="agent-mode-sidebar-heading">
+          <div class="agent-mode-sidebar__intro">
+            <button id="agent-avatar-button" class="agent-mode-sidebar__mark avatar-trigger" type="button" aria-label="更换 Work 头像" title="更换麻衣头像" aria-haspopup="dialog"><img id="agent-portrait" src="../assets/mai-profile.png" alt=""></button>
+            <div><strong id="agent-mode-sidebar-heading">Work</strong><small>工作记录与陪伴记忆相互独立</small></div>
+          </div>
+          <button id="new-work-project-button" class="agent-new-action-button" type="button">＋ 新建项目</button>
+          <div class="agent-mode-sidebar__heading"><span>项目</span><span><button id="rename-work-project-button" type="button" aria-label="重命名当前项目" title="重命名当前项目">✎</button><button id="refresh-work-data-button" type="button" aria-label="刷新项目与工作记录" title="刷新项目与工作记录">↻</button></span></div>
+          <div id="work-project-list" class="agent-session-list"></div>
+          <p id="work-project-empty" class="agent-session-empty">还没有 Work Project。</p>
+          <button id="new-action-button" class="agent-new-action-button agent-new-action-button--subtle" type="button">＋ 新任务</button>
+          <div class="agent-mode-sidebar__footer">
+            <button id="agent-settings-button" class="agent-sidebar-link" type="button">应用设置</button>
+            <small>此工作台不会读取或写入陪伴记忆。</small>
+          </div>
+        </section>
+        <div class="sidebar-account">
+          <button id="user-avatar-button" class="avatar-trigger avatar-trigger--user" type="button" aria-label="更换用户头像" title="更换用户头像" aria-haspopup="dialog"><img id="user-avatar" src="../assets/mai-icon.png" alt=""></button><span><strong>学弟</strong><small>本地私人空间</small></span><span class="sidebar-account__status" title="数据保存在本机"></span>
+        </div>
+      </header>
+
+      <section class="conversation-workspace">
+        <header class="conversation-heading">
+          <div><span id="conversation-runtime-eyebrow" class="eyebrow">MAI · CURRENT CONVERSATION</span><h2 id="active-session-title">新对话</h2></div>
+          <div class="conversation-badges"><span id="conversation-model-badge">DeepSeek</span><span id="conversation-memory-badge">记忆已开启</span></div>
+        </header>
+        <section id="messages" class="messages" aria-live="polite">
+          <article class="message message--assistant"><div class="bubble">我在。今天发生了什么，想先从哪件事说起？</div></article>
+        </section>
+        <div id="notice" class="notice notice--hidden" role="status"></div>
+        <section id="agent-runtime-panel" class="agent-runtime-panel" hidden aria-label="Work 模式状态">
+          <p id="agent-runtime-status">Work 可以处理明确交给我的任务。</p>
+          <div class="agent-runtime-panel__actions">
+            <button id="agent-enable-button" type="button">启用 Work</button>
+            <button id="agent-cancel-button" type="button" hidden>取消当前工作</button>
+          </div>
+        </section>
+        <form id="composer" class="composer">
+          <button id="voice-input-button" class="voice-input-button" type="button" aria-label="语音输入" title="说一句话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"></path></svg>
+          </button>
+          <textarea id="message-input" rows="1" maxlength="3000" placeholder="想和麻衣聊些什么？" aria-label="聊天内容"></textarea>
+          <button id="send-button" class="send-button" type="submit" aria-label="发送">发送</button>
+        </form>
+        <div id="chat-workspace-capability" class="chat-workspace-capability mode-feature mode-feature--chat" aria-live="polite"></div>
+        <p id="runtime-privacy-note" class="privacy-note">Mai 会在本地保存对话与记忆；模型请求仅发送到你选择的 Provider。</p>
+      </section>
+
+      <aside id="companion-context" class="companion-context mode-feature mode-feature--chat" aria-label="陪伴信息">
+        <section class="companion-presence-card">
+          <img src="../assets/mai-profile.png" alt="樱岛麻衣">
+          <div><strong>樱岛麻衣</strong><p><span class="presence-dot"></span>一直在这里陪着你</p></div>
+        </section>
+        <section class="context-section">
+          <div class="context-section__heading"><span>此刻</span><span class="context-live">LIVE</span></div>
+          <div class="context-stats">
+            <article><strong id="context-message-count">0</strong><span>本轮消息</span></article>
+            <article><strong id="context-memory-count">0</strong><span>长期记忆</span></article>
+            <article><strong id="context-plan-count">0</strong><span>共同计划</span></article>
+          </div>
+        </section>
+        <section class="context-section">
+          <div class="context-section__heading"><span>今天</span><button id="context-open-schedule" type="button">日程</button></div>
+          <div id="context-today-list" class="context-list"></div>
+          <p id="context-today-empty" class="context-empty">今天没有尚未完成的事项。</p>
+        </section>
+        <section class="context-section">
+          <div class="context-section__heading"><span>共同计划</span><button id="context-open-plans" type="button">查看全部</button></div>
+          <div id="context-plan-list" class="context-list"></div>
+          <p id="context-plan-empty" class="context-empty">把想长期坚持的事告诉麻衣，她会陪你记住。</p>
+        </section>
+        <section class="context-section context-section--capabilities">
+          <span>陪伴能力</span>
+          <div id="context-capability-grid" class="capability-grid"><span>长期记忆</span><span>现实时间</span><span>主动关心</span><span>语音陪伴</span></div>
+        </section>
+        <button id="open-companion-center-button" class="companion-center-button" type="button">打开生活陪伴 <span>↗</span></button>
+      </aside>
+      <aside id="action-context" class="action-context mode-feature mode-feature--agent" aria-label="Work 工作区信息">
+        <section class="action-context__hero">
+          <span class="action-context__eyebrow">WORK</span>
+          <h3>独立工作空间</h3>
+          <p id="action-context-status">正在检查 Work 能力…</p>
+        </section>
+        <section class="action-context__section">
+          <span>当前能力</span>
+          <div class="action-context__capabilities"><span>明确任务</span><span>可取消</span><span>独立会话</span></div>
+        </section>
+        <section class="action-context__section">
+          <span>数据边界</span>
+          <p>任务输入、过程和结果不会进入聊天历史、长期记忆或麻衣的 Persona。</p>
+        </section>
+        <section class="action-context__section">
+          <span>运行时</span>
+          <p id="action-context-runtime">未启用</p>
+        </section>
+        <section class="action-context__section">
+          <span>当前项目</span>
+          <p id="action-project-status">尚未选择项目。</p>
+        </section>
+        <section class="action-context__section">
+          <span>Project Workspace</span>
+          <p id="action-workspace-status">未选择；仅可使用安全本地工具。</p>
+          <p id="action-workspace-path" class="workspace-explorer__path" title="">选择后将在这里显示文件结构。</p>
+          <div class="workspace-explorer__actions">
+            <button id="select-action-workspace" class="button button--secondary" type="button">选择项目 Workspace</button>
+            <button id="refresh-action-workspace" class="button button--secondary" type="button" disabled>刷新</button>
+          </div>
+          <p id="action-workspace-stale" class="workspace-explorer__stale" hidden>目录可能已发生变化，刷新以查看最新内容。</p>
+          <div id="action-workspace-tree" class="workspace-explorer" role="tree" aria-label="Project Workspace 文件树"></div>
+          <p id="action-workspace-empty" class="workspace-explorer__empty">选择 Workspace 后可查看其中的文件和文件夹。</p>
+        </section>
+        <section class="action-context__section">
+          <span>运行详情</span>
+          <ol id="agent-event-log" class="action-result-steps" aria-label="当前任务事件"></ol>
+          <p id="agent-event-empty">当前没有运行详情。</p>
+        </section>
+      </aside>
+      <div id="companion-inspector-scrim" class="history-scrim companion-inspector-scrim history-scrim--hidden" aria-hidden="true"></div>
+      <div id="work-inspector-scrim" class="history-scrim work-inspector-scrim history-scrim--hidden" aria-hidden="true"></div>
+    </main>
+    <div id="history-scrim" class="history-scrim history-scrim--hidden"></div>
+    <aside id="history-sidebar" class="history-sidebar history-sidebar--closed" aria-label="历史对话">
+      <div class="history-sidebar__header">
+        <div>
+          <h2 id="history-title">历史对话</h2>
+          <p id="history-description">你的每一段对话都保存在本机</p>
+        </div>
+        <button id="close-history" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+      </div>
+      <button id="sidebar-new-chat" class="history-new-button" type="button">＋ 开始新对话</button>
+      <div id="history-list" class="history-list"></div>
+      <div id="history-empty" class="history-empty">还没有历史对话。</div>
+      <div class="history-sidebar__footer">
+        <button id="clear-history" class="button button--danger" type="button">清空全部聊天历史</button>
+      </div>
+    </aside>
+
+    <div id="conversation-context-menu" class="conversation-context-menu conversation-context-menu--hidden" role="menu" aria-label="对话操作">
+      <button id="conversation-context-rename" type="button" role="menuitem">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.7 4.2L7.5 19 18.7 7.8a2.1 2.1 0 0 0 0-3L17.2 3.3a2.1 2.1 0 0 0-3 0L4 13.5V16Z"></path><path d="m13 4.5 6.5 6.5"></path></svg>
+        <span>重命名</span>
+      </button>
+      <div class="conversation-context-menu__separator" role="separator"></div>
+      <button id="conversation-context-delete" class="conversation-context-menu__danger" type="button" role="menuitem">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"></path></svg>
+        <span id="conversation-context-delete-label">删除对话</span>
+      </button>
+    </div>
+
+    <div id="avatar-picker-overlay" class="overlay overlay--hidden">
+      <section class="settings-card avatar-picker-card" role="dialog" aria-modal="true" aria-labelledby="avatar-picker-title">
+        <div class="settings-title-row">
+          <div>
+            <h2 id="avatar-picker-title">选择头像</h2>
+            <p id="avatar-picker-description">项目不内置头像素材。你选择的图片只会复制到本机应用数据目录。</p>
+          </div>
+          <button id="close-avatar-picker" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+        <div id="avatar-grid" class="avatar-grid avatar-grid--local" aria-label="本地头像操作">
+          <button id="choose-custom-avatar" class="input-dialog-button input-dialog-button--primary" type="button">选择本地头像</button>
+          <button id="clear-custom-avatar" class="input-dialog-button" type="button">恢复默认头像</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="settings-overlay" class="overlay overlay--hidden">
+      <section class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="settings-title-row">
+          <div>
+            <h2 id="settings-title">模型与陪伴设置</h2>
+            <p>选择模型来源，并设置麻衣的性格、记忆、主动关心和声音。</p>
+          </div>
+          <button id="close-settings" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <label class="field">
+          <span>API Key</span>
+          <input id="api-key" type="password" maxlength="512" autocomplete="off" placeholder="sk-…">
+          <small id="key-hint">Key 不会显示在聊天页面中。</small>
+        </label>
+
+        <label class="field">
+          <span>模型来源</span>
+          <select id="model-provider">
+            <option value="deepseek">DeepSeek 云端 API</option>
+            <option value="local" disabled>本地模型（接口已预留，当前尚不可用）</option>
+          </select>
+          <small id="model-provider-hint">当前版本使用 DeepSeek；本地模型接入后才会开放。</small>
+        </label>
+
+        <label class="field">
+          <span>模型</span>
+          <select id="model">
+            <option value="deepseek-v4-flash">DeepSeek V4 Flash（推荐，快速）</option>
+            <option value="deepseek-v4-pro">DeepSeek V4 Pro（能力更强）</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>性格</span>
+          <select id="personality">
+            <option value="classic">经典麻衣 · 从容俏皮</option>
+            <option value="gentle">温柔陪伴 · 耐心治愈</option>
+            <option value="playful">活泼爱逗 · 轻松撒娇</option>
+            <option value="focused">专注搭档 · 冷静高效</option>
+            <option value="open">坦率开放 · 亲密自然</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>自定义性格补充</span>
+          <textarea id="custom-prompt" rows="3" maxlength="1000" placeholder="例如：叫我小明；回答时更简短一些。"></textarea>
+          <small>可留空。请勿在这里填写 API Key 或其他敏感信息。</small>
+        </label>
+
+        <div class="toggle-group">
+          <label class="toggle-row">
+            <span>
+              <strong>长期记忆</strong>
+              <small>带原话证据的分层记忆；最多 10000 条，可从历史对话修复</small>
+            </span>
+            <input id="memory-enabled" type="checkbox" checked>
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>主动聊天</strong>
+              <small>结合现实时间、对话和记忆主动提问；会消耗少量 API</small>
+            </span>
+            <input id="proactive-enabled" type="checkbox" checked>
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>女友陪伴模式</strong>
+              <small>未回复时结合对话与记忆主动联系；会消耗少量 API 额度</small>
+            </span>
+            <input id="girlfriend-enabled" type="checkbox">
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>私人朋友圈自动更新</strong>
+              <small>每天约 1—2 条，仅保存在本机；生成内容会消耗少量 API</small>
+            </span>
+            <input id="moments-enabled" type="checkbox" checked>
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>现实天气</strong>
+              <small>仅在开启后把填写的城市发送给 Open-Meteo 获取天气</small>
+            </span>
+            <input id="weather-enabled" type="checkbox">
+          </label>
+        </div>
+
+        <section class="field">
+          <span>主动聊天频率</span>
+          <div class="frequency-fields">
+            <label>
+              <small>最短间隔（分钟）</small>
+              <input id="proactive-interval-minutes" type="number" min="1" max="10080" step="1" value="45">
+            </label>
+            <label>
+              <small>每天最多（条）</small>
+              <input id="proactive-daily-limit" type="number" min="1" max="999" step="1" value="5">
+            </label>
+          </div>
+          <small>可设置 1–10080 分钟、1–999 条。她仍会先判断是否有值得继续的话题。</small>
+        </section>
+
+        <section class="field">
+          <span>女友模式关心频率</span>
+          <div class="frequency-fields">
+            <label>
+              <small>追问间隔（分钟）</small>
+              <input id="girlfriend-interval-minutes" type="number" min="1" max="10080" step="1" value="20">
+            </label>
+            <label>
+              <small>每轮最多（条）</small>
+              <input id="girlfriend-max-follow-ups" type="number" min="1" max="999" step="1" value="4">
+            </label>
+          </div>
+          <small>你一回复，她就停止本轮追问；允许设置到数百条，但高频会产生大量 API 调用。</small>
+        </section>
+
+        <section class="voice-settings-panel">
+          <div class="voice-settings-title">
+            <div>
+              <strong>高质量本地语音</strong>
+              <small>CosyVoice 在本机生成带情绪的女声，SenseVoice 辅助判断语气；麦克风音频不会上传。</small>
+            </div>
+            <button id="test-voice" class="button button--secondary" type="button">试听</button>
+          </div>
+          <label class="toggle-row voice-auto-row">
+            <span>
+              <strong>自动朗读文字回复</strong>
+              <small>语音输入和实时通话始终朗读；这里控制普通文字聊天</small>
+            </span>
+            <input id="voice-auto-read" type="checkbox">
+          </label>
+          <div class="voice-select-grid">
+            <label>
+              <small>朗读引擎</small>
+              <select id="voice-engine">
+                <option value="local">CosyVoice · 本地情绪女声</option>
+                <option value="system">Windows 系统语音（备用）</option>
+              </select>
+            </label>
+            <label>
+              <small>系统备用声音</small>
+              <select id="voice-name"><option value="">系统默认声音</option></select>
+            </label>
+            <label>
+              <small>识别语言</small>
+              <select id="voice-culture"><option value="zh-CN">普通话（简体中文）</option></select>
+            </label>
+          </div>
+          <div class="local-voice-install">
+            <div>
+              <strong id="local-voice-title">正在检查本地女声…</strong>
+              <small id="local-voice-detail">全新安装约下载 11 GB，请预留至少 16 GB；旧版用户只补充情绪模型。</small>
+            </div>
+            <button id="install-local-voice" class="button button--secondary" type="button">安装本地女声</button>
+          </div>
+          <div id="local-voice-progress" class="local-voice-progress local-voice-progress--hidden">
+            <i id="local-voice-progress-bar"></i>
+          </div>
+          <div class="voice-slider-grid">
+            <label><small>语速 <b id="voice-rate-value">1.00×</b></small><input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
+            <label><small>系统音调 <b id="voice-pitch-value">1.00×</b></small><input id="voice-pitch" type="range" min="0.7" max="1.3" step="0.05" value="1"></label>
+            <label><small>音量 <b id="voice-volume-value">100%</b></small><input id="voice-volume" type="range" min="0.1" max="1" step="0.05" value="1"></label>
+          </div>
+          <p id="voice-capability-status" class="voice-capability-status">正在检查本地语音组件…</p>
+        </section>
+
+        <label class="field">
+          <span>天气城市（可选）</span>
+          <input id="weather-city" type="text" maxlength="80" placeholder="例如：上海、成都、Tokyo">
+          <small>天气默认关闭；城市名称仅用于请求 Open-Meteo，不会发送 API Key 或聊天内容。</small>
+        </label>
+
+        <section class="wallpaper-settings" aria-labelledby="wallpaper-settings-title">
+          <div class="wallpaper-settings__heading">
+            <div>
+              <strong id="wallpaper-settings-title">壁纸</strong>
+              <small>项目不内置壁纸。你选择的图片只会复制到本机应用数据目录。</small>
+            </div>
+            <span id="wallpaper-selection-label" class="wallpaper-selection-label"></span>
+          </div>
+          <div class="wallpaper-actions">
+            <button id="choose-custom-wallpaper" class="input-dialog-button input-dialog-button--primary" type="button">选择本地壁纸</button>
+            <button id="clear-custom-wallpaper" class="input-dialog-button" type="button">移除本地壁纸</button>
+          </div>
+          <div id="wallpaper-grid" class="wallpaper-grid" role="radiogroup" aria-label="本地壁纸"></div>
+        </section>
+
+        <section class="appearance-settings" aria-labelledby="appearance-settings-title">
+          <div class="appearance-settings__heading">
+            <strong id="appearance-settings-title">外观与节奏</strong>
+            <small>只保留影响陪伴体验的选项；壁纸始终位于内容和玻璃材质之下。</small>
+          </div>
+          <label>主题
+            <select id="appearance-theme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
+          </label>
+          <label>玻璃层次
+            <select id="appearance-glass"><option value="soft">柔和</option><option value="balanced">平衡</option><option value="clear">清晰</option></select>
+          </label>
+          <label>聊天密度
+            <select id="appearance-density"><option value="compact">紧凑</option><option value="comfortable">舒适</option><option value="relaxed">宽松</option></select>
+          </label>
+          <label>透明度 <output id="appearance-transparency-value">72%</output>
+            <input id="appearance-transparency" type="range" min="58" max="90" step="1" value="72">
+          </label>
+          <label>界面缩放 <output id="appearance-scale-value">100%</output>
+            <input id="appearance-scale" type="range" min="90" max="110" step="10" value="100">
+          </label>
+          <label>动效
+            <select id="appearance-motion"><option value="off">关闭</option><option value="reduced">克制</option><option value="full">自然</option></select>
+          </label>
+          <section id="appearance-preview" class="appearance-preview" aria-label="外观实时预览">
+            <div class="appearance-preview__heading"><span>LIVE PREVIEW</span><strong>与麻衣聊一会儿</strong></div>
+            <div class="appearance-preview__conversation">
+              <div class="appearance-preview__mai"><i>M</i><p>今天过得怎么样？</p></div>
+              <p class="appearance-preview__user">还好，想和你安静地聊一会儿。</p>
+            </div>
+            <div class="appearance-preview__composer"><span>想和麻衣聊些什么……</span><b>↑</b></div>
+          </section>
+        </section>
+
+        <div class="endpoint">
+          <span>接口地址</span>
+          <code>https://api.deepseek.com/chat/completions</code>
+        </div>
+
+        <div id="settings-status" class="settings-status" role="status"></div>
+
+        <div class="settings-actions">
+          <button id="clear-key" class="button button--danger" type="button">清除 Key</button>
+          <button id="preview-greeting" class="button button--secondary" type="button">试主动聊天</button>
+          <button id="preview-girlfriend" class="button button--secondary" type="button">试女友消息</button>
+          <span class="actions-spacer"></span>
+          <button id="test-connection" class="button button--secondary" type="button">测试连接</button>
+          <button id="save-settings" class="button button--primary" type="button">保存</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="memory-overlay" class="overlay overlay--hidden">
+      <section class="settings-card memory-card" role="dialog" aria-modal="true" aria-labelledby="memory-title">
+        <div class="settings-title-row">
+          <div>
+            <h2 id="memory-title">麻衣记得的事</h2>
+            <p id="memory-summary">长期记忆只保存在这台电脑上。</p>
+          </div>
+          <button id="close-memory" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <div class="memory-add">
+          <input id="memory-text" type="text" maxlength="360" placeholder="手动告诉麻衣一件想长期记住的事">
+          <select id="memory-category" aria-label="记忆分类">
+            <option value="preference">喜好</option>
+            <option value="identity">身份资料</option>
+            <option value="relationship">关系与称呼</option>
+            <option value="goal">长期目标</option>
+            <option value="routine">习惯</option>
+            <option value="experience">重要经历</option>
+            <option value="boundary">边界</option>
+            <option value="other">其他</option>
+          </select>
+          <select id="memory-importance" aria-label="重要度">
+            <option value="3">重要度 3</option>
+            <option value="4">重要度 4</option>
+            <option value="5">重要度 5</option>
+            <option value="2">重要度 2</option>
+            <option value="1">重要度 1</option>
+          </select>
+          <button id="add-memory" class="button button--secondary" type="button">添加</button>
+        </div>
+
+        <div id="memory-list" class="memory-list"></div>
+        <div id="memory-empty" class="memory-empty">
+          还没有长期记忆。聊到你的喜好、习惯或长期目标时，麻衣会逐渐记住。
+        </div>
+
+        <p class="memory-privacy">点 ☆ 可将重要内容设为核心记忆。聊天提取会显示可信度与原话证据；不会记住 API Key、密码、验证码、身份证号码或支付信息。</p>
+        <div class="settings-actions">
+          <button id="clear-memory" class="button button--danger" type="button">仅清空长期记忆</button>
+          <button id="rebuild-memory" class="button button--secondary" type="button">从历史修复记忆</button>
+          <span class="actions-spacer"></span>
+          <button id="done-memory" class="button button--primary" type="button">完成</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="shared-life-overlay" class="overlay overlay--hidden">
+      <section class="settings-card shared-life-card" role="dialog" aria-modal="true" aria-labelledby="shared-life-title">
+        <div class="settings-title-row">
+          <div>
+            <h2 id="shared-life-title">生活中枢</h2>
+            <p id="shared-life-summary">时间线、人物、记忆整理与共同生活都在这里。</p>
+          </div>
+          <button id="close-shared-life" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <section class="world-card">
+          <div class="world-card__now">
+            <span id="world-location">家里</span>
+            <strong id="world-activity">正在读取麻衣的日程…</strong>
+            <p id="world-detail"></p>
+          </div>
+          <div class="world-card__next">
+            <small>接下来</small>
+            <b id="world-next">—</b>
+          </div>
+        </section>
+
+        <div class="shared-life-toolbar">
+          <div class="shared-life-tabs" role="tablist">
+            <button id="timeline-tab" class="shared-life-tab shared-life-tab--active" type="button" role="tab">时间线</button>
+            <button id="search-tab" class="shared-life-tab" type="button" role="tab">搜索</button>
+            <button id="projects-tab" class="shared-life-tab" type="button" role="tab">项目</button>
+            <button id="habits-tab" class="shared-life-tab" type="button" role="tab">习惯</button>
+            <button id="review-tab" class="shared-life-tab" type="button" role="tab">核验</button>
+            <button id="people-tab" class="shared-life-tab" type="button" role="tab">人物</button>
+            <button id="digests-tab" class="shared-life-tab" type="button" role="tab">整理</button>
+            <button id="episodes-tab" class="shared-life-tab" type="button" role="tab">共同日记</button>
+            <button id="topics-tab" class="shared-life-tab" type="button" role="tab">未完话题</button>
+            <button id="maintenance-tab" class="shared-life-tab" type="button" role="tab">数据</button>
+          </div>
+          <button id="rebuild-shared-life" class="button button--secondary" type="button">重新整理</button>
+        </div>
+
+        <section id="timeline-panel" class="shared-life-panel">
+          <div id="timeline-list" class="hub-list"></div>
+          <div id="timeline-empty" class="memory-empty">时间线还没有内容。重要记忆、共同事件、朋友圈和生活事项会统一出现在这里。</div>
+        </section>
+
+        <section id="search-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div class="continuity-search">
+            <input id="continuity-search-input" type="search" maxlength="300" placeholder="搜索聊天、记忆、人物、项目和朋友圈">
+            <select id="continuity-search-type" aria-label="搜索范围">
+              <option value="all">全部</option>
+              <option value="conversation">历史对话</option>
+              <option value="memory">长期记忆</option>
+              <option value="timeline">时间线</option>
+              <option value="person">人物</option>
+              <option value="project">项目</option>
+              <option value="habit">习惯</option>
+              <option value="moment">朋友圈</option>
+            </select>
+            <button id="run-continuity-search" class="button button--secondary" type="button">搜索</button>
+          </div>
+          <p id="continuity-search-summary" class="continuity-summary">所有检索都在本机完成。</p>
+          <div id="continuity-search-list" class="hub-list"></div>
+          <div id="continuity-search-empty" class="memory-empty">输入关键词即可搜索全部本地生活记录。</div>
+        </section>
+
+        <section id="projects-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div class="continuity-editor continuity-editor--project">
+            <input id="project-title" type="text" maxlength="120" placeholder="项目名称">
+            <input id="project-outcome" type="text" maxlength="300" placeholder="想达到的结果（可选）">
+            <input id="project-target" type="datetime-local" aria-label="目标时间">
+            <select id="project-priority" aria-label="项目优先级">
+              <option value="3">普通</option>
+              <option value="4">重要</option>
+              <option value="5">非常重要</option>
+              <option value="2">较低</option>
+              <option value="1">最低</option>
+            </select>
+            <button id="add-project" class="button button--secondary" type="button">添加项目</button>
+          </div>
+          <p id="projects-summary" class="continuity-summary"></p>
+          <div id="projects-list" class="hub-list"></div>
+          <div id="projects-empty" class="memory-empty">还没有项目。长期目标会在有原话证据时进入这里，也可以手动添加。</div>
+        </section>
+
+        <section id="habits-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div class="continuity-editor continuity-editor--habit">
+            <input id="habit-title" type="text" maxlength="120" placeholder="习惯名称">
+            <select id="habit-frequency" aria-label="习惯频率">
+              <option value="daily">每天</option>
+              <option value="weekdays">工作日</option>
+              <option value="weekly">每周</option>
+            </select>
+            <input id="habit-target" type="number" min="1" max="21" value="1" aria-label="每期目标次数">
+            <input id="habit-reminder-time" type="time" aria-label="提醒时间（可选）">
+            <button id="add-habit" class="button button--secondary" type="button">添加习惯</button>
+          </div>
+          <p id="habits-summary" class="continuity-summary"></p>
+          <div id="habits-list" class="hub-list"></div>
+          <div id="habits-empty" class="memory-empty">还没有追踪习惯。可以记录每天或每周想坚持的事情。</div>
+        </section>
+
+        <section id="review-panel" class="shared-life-panel shared-life-panel--hidden">
+          <p id="review-summary" class="continuity-summary">这里集中显示低可信、时间不确定、过久未确认或互相冲突的记忆。</p>
+          <div id="review-list" class="hub-list"></div>
+          <div id="review-empty" class="memory-empty">没有需要核验的记忆，当前记忆账本很干净。</div>
+        </section>
+
+        <section id="people-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div class="person-editor">
+            <input id="person-name" type="text" maxlength="80" placeholder="姓名或称呼">
+            <input id="person-relation" type="text" maxlength="40" placeholder="与你的关系">
+            <input id="person-notes" type="text" maxlength="160" placeholder="备注（可选）">
+            <button id="add-person" class="button button--secondary" type="button">添加</button>
+          </div>
+          <div id="people-list" class="hub-list"></div>
+          <div id="people-empty" class="memory-empty">还没有人物关系。麻衣会从你明确说出的家人、朋友和同事关系中建立可追溯记录。</div>
+        </section>
+
+        <section id="digests-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div id="digests-list" class="hub-list"></div>
+          <div id="digests-empty" class="memory-empty">还没有可整理的生活事件。</div>
+        </section>
+
+        <section id="episodes-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div id="episodes-list" class="episodes-list"></div>
+          <div id="episodes-empty" class="memory-empty">还没有重要的共同事件。值得纪念的经历会按时间写进这里。</div>
+        </section>
+
+        <section id="topics-panel" class="shared-life-panel shared-life-panel--hidden">
+          <div id="topics-list" class="topics-list"></div>
+          <div id="topics-empty" class="memory-empty">现在没有等待继续的话题。</div>
+        </section>
+
+        <section id="maintenance-panel" class="shared-life-panel shared-life-panel--hidden">
+          <article class="health-card">
+            <div>
+              <strong id="health-title">正在检查数据库…</strong>
+              <p id="health-summary"></p>
+            </div>
+            <button id="check-database" class="button button--secondary" type="button">重新检查</button>
+          </article>
+          <div id="health-details" class="health-details"></div>
+          <div class="data-actions">
+            <button id="create-backup" class="button button--secondary" type="button">完整备份</button>
+            <button id="restore-backup" class="button button--secondary" type="button">恢复备份</button>
+            <button id="export-data" class="button button--secondary" type="button">导出数据</button>
+            <button id="repair-database" class="button button--danger" type="button">安全修复</button>
+          </div>
+          <p class="memory-privacy">完整备份包含本机设置和加密后的 API Key；“导出数据”不会包含 API Key。修复前会自动创建恢复点。</p>
+        </section>
+
+        <p class="memory-privacy">人物、记忆和时间线尽量保留原话来源。点击“查看原话”可以回到对应历史消息；本页内容只保存在本机。</p>
+        <div class="settings-actions">
+          <span class="actions-spacer"></span>
+          <button id="done-shared-life" class="button button--primary" type="button">完成</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="life-overlay" class="overlay overlay--hidden">
+      <section class="settings-card life-card" role="dialog" aria-modal="true" aria-labelledby="life-title">
+        <div class="settings-title-row">
+          <div>
+            <h2 id="life-title">麻衣的心与生活</h2>
+            <p>持续状态、关系成长、待办、约定与纪念日</p>
+          </div>
+          <button id="close-life" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <section class="mind-panel">
+          <div class="mind-panel__headline">
+            <div>
+              <small>关系阶段</small>
+              <strong id="relationship-stage">熟悉</strong>
+            </div>
+            <span id="mind-mood" class="mind-mood">平静</span>
+          </div>
+          <div class="mind-meter">
+            <span>亲密度</span>
+            <div><i id="intimacy-bar"></i></div>
+            <b id="intimacy-value">0</b>
+          </div>
+          <div class="mind-meter">
+            <span>信任度</span>
+            <div><i id="trust-bar"></i></div>
+            <b id="trust-value">0</b>
+          </div>
+          <div class="mind-meter">
+            <span>精力</span>
+            <div><i id="energy-bar"></i></div>
+            <b id="energy-value">0</b>
+          </div>
+          <p id="active-topic" class="mind-note">当前没有持续关注的话题。</p>
+          <p id="pending-question" class="mind-note">没有等待回答的问题。</p>
+        </section>
+
+        <section class="weather-panel">
+          <div>
+            <small>现实天气</small>
+            <strong id="weather-summary">未开启</strong>
+            <p id="weather-detail">可以在 DeepSeek 设置中填写城市并开启。</p>
+          </div>
+          <button id="refresh-weather" class="button button--secondary" type="button">刷新</button>
+        </section>
+
+        <div class="life-divider">
+          <strong>待办、约定与纪念日</strong>
+          <small>聊天中明确说出的带时间安排也可以自动加入</small>
+        </div>
+
+        <div class="life-add">
+          <input id="life-title-input" type="text" maxlength="100" placeholder="例如：提交报告">
+          <select id="life-kind" aria-label="事项类型">
+            <option value="todo">待办</option>
+            <option value="appointment">约定</option>
+            <option value="anniversary">纪念日</option>
+          </select>
+          <input id="life-due-at" type="datetime-local" aria-label="日期时间">
+          <select id="life-recurring" aria-label="重复">
+            <option value="none">不重复</option>
+            <option value="yearly">每年重复</option>
+          </select>
+          <button id="add-life-item" class="button button--secondary" type="button">添加</button>
+        </div>
+
+        <div id="life-list" class="life-list"></div>
+        <div id="life-empty" class="memory-empty">还没有生活事项。可以手动添加，也可以在聊天中告诉麻衣带具体时间的计划。</div>
+
+        <div class="settings-actions life-actions">
+          <button id="reset-mind" class="button button--danger" type="button">重置关系状态</button>
+          <span class="actions-spacer"></span>
+          <button id="done-life" class="button button--primary" type="button">完成</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="moments-overlay" class="overlay overlay--hidden">
+      <section class="settings-card moments-card" role="dialog" aria-modal="true" aria-labelledby="moments-title">
+        <div class="settings-title-row moments-title-row">
+          <div>
+            <h2 id="moments-title">麻衣的私人朋友圈</h2>
+            <p>这里只有你和她，所有内容都只保存在这台电脑上。</p>
+          </div>
+          <button id="close-moments" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <div class="moments-toolbar">
+          <span id="moments-auto-status" class="moments-auto-status">自动更新已开启</span>
+          <button id="generate-moment" class="button button--secondary" type="button">让麻衣发一条</button>
+        </div>
+
+        <div id="moments-status" class="settings-status moments-status" role="status"></div>
+        <div id="moments-list" class="moments-list"></div>
+        <div id="moments-empty" class="memory-empty">这里还没有动态。可以先让麻衣发一条。</div>
+        <p class="memory-privacy moments-privacy">你在动态下的回复会用于麻衣的上下文与长期记忆；API Key、朋友圈和评论都不会公开。</p>
+      </section>
+    </div>
+
+    <div id="input-dialog-overlay" class="input-dialog-overlay input-dialog-overlay--hidden">
+      <section class="input-dialog-card" role="dialog" aria-modal="true" aria-labelledby="input-dialog-title" aria-describedby="input-dialog-description">
+        <div class="input-dialog-heading">
+          <div>
+            <p class="input-dialog-kicker">MAI SAKURAJIMA</p>
+            <h2 id="input-dialog-title">编辑</h2>
+            <p id="input-dialog-description"></p>
+          </div>
+          <button id="input-dialog-close" class="input-dialog-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <form id="input-dialog-form" novalidate>
+          <div id="input-dialog-fields" class="input-dialog-fields"></div>
+          <p id="input-dialog-error" class="input-dialog-error" role="alert"></p>
+          <div class="input-dialog-actions">
+            <button id="input-dialog-cancel" class="input-dialog-button" type="button">取消</button>
+            <button id="input-dialog-submit" class="input-dialog-button input-dialog-button--primary" type="submit">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div id="workspace-preview-overlay" class="workspace-preview-overlay" hidden>
+      <section class="workspace-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-preview-name">
+        <div class="workspace-preview__header">
+          <strong id="workspace-preview-name"></strong>
+          <button id="close-workspace-preview" type="button" class="workspace-preview__close" aria-label="关闭文件预览">×</button>
+        </div>
+        <small id="workspace-preview-path"></small>
+        <p id="workspace-preview-status" class="workspace-preview__status"></p>
+        <pre id="workspace-preview-content" class="workspace-preview__content" hidden></pre>
+      </section>
+    </div>
+
+    <div id="voice-call-overlay" class="overlay overlay--hidden">
+      <section class="voice-call-card" role="dialog" aria-modal="true" aria-labelledby="voice-call-title">
+        <div class="voice-call-topline">
+          <span id="voice-call-duration">00:00</span>
+          <span class="voice-call-private">本地麦克风</span>
+        </div>
+        <div id="voice-call-avatar" class="voice-call-avatar">
+          <img src="../assets/mai-profile.png" alt="樱岛麻衣">
+          <i></i><i></i><i></i>
+        </div>
+        <h2 id="voice-call-title">樱岛麻衣</h2>
+        <p id="voice-call-status" class="voice-call-status">正在接通…</p>
+        <div id="voice-call-transcript" class="voice-call-transcript" aria-live="polite">
+          <p class="voice-call-hint">接通后直接说话就好，她会在回答完后继续听你说。</p>
+        </div>
+        <div class="voice-call-controls">
+          <button id="voice-call-mic" class="call-control" type="button" aria-label="暂停麦克风" title="暂停麦克风">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"></path></svg>
+            <span>麦克风</span>
+          </button>
+          <button id="end-voice-call" class="call-control call-control--end" type="button" aria-label="挂断" title="挂断">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14.5c4.8-3.7 11.2-3.7 16 0l-2.3 3.6-3.2-1.8v-2.1a12.6 12.6 0 0 0-5 0v2.1l-3.2 1.8L4 14.5Z"></path></svg>
+            <span>挂断</span>
+          </button>
+          <button id="voice-call-speaker" class="call-control" type="button" aria-label="关闭扬声器" title="关闭扬声器">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"></path><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path></svg>
+            <span>扬声器</span>
+          </button>
+        </div>
+          <p class="voice-call-note">语音与语气识别都在本机完成；麻衣会分句开始回答，说话时你也可以直接打断她（戴耳机更稳）。</p>
+      </section>
+    </div>
+
+    <script src="appearance.js"></script>
+    <script src="chat.js"></script>
+  </body>
+</html>

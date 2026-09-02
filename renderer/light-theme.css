@@ -1,0 +1,768 @@
+:root {
+  color-scheme: light;
+  --ui-white: #ffffff;
+  --ui-canvas: #f7f7f7;
+  --ui-subtle: #f1f1f1;
+  --ui-hover: #e9e9e9;
+  --ui-text: #171717;
+  --ui-muted: #5f6368;
+  --ui-faint: #777b80;
+  --ui-line: #d8d8d8;
+  --ui-line-strong: #a7a7a7;
+  --ui-shadow: 0 12px 34px rgba(0, 0, 0, 0.1);
+  --mai-accent: #a33f6e;
+  --mai-accent-strong: #7e2e55;
+  --mai-tint: #fff0f6;
+  --mai-tint-strong: #f8dce8;
+  --ui-success: #18794e;
+  --ui-warning: #8a5700;
+  --ui-danger: #b42318;
+}
+
+/* Shared native controls */
+.ui-chat button,
+.ui-chat input,
+.ui-chat select,
+.ui-chat textarea,
+.ui-assistant button,
+.ui-assistant input,
+.ui-assistant select,
+.ui-assistant textarea,
+.ui-timer button,
+.ui-timer input,
+.ui-timer select {
+  color: var(--ui-text);
+}
+
+.ui-chat input::placeholder,
+.ui-chat textarea::placeholder,
+.ui-assistant input::placeholder,
+.ui-assistant textarea::placeholder {
+  color: #858585;
+  opacity: 1;
+}
+
+.ui-chat :focus-visible,
+.ui-assistant :focus-visible,
+.ui-timer :focus-visible {
+  outline: 2px solid var(--mai-accent);
+  outline-offset: 2px;
+}
+
+/* Chat window */
+.ui-chat {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-chat .chat-app {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-chat .chat-header {
+  border-bottom: 1px solid var(--ui-line);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+}
+
+.ui-chat .portrait-wrap {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-canvas);
+  box-shadow: none;
+}
+
+.ui-chat .identity h1,
+.ui-chat .identity p,
+.ui-chat .chat-app h2,
+.ui-chat .chat-app h3,
+.ui-chat .chat-app strong,
+.ui-chat .chat-app p {
+  color: var(--ui-text);
+}
+
+.ui-chat .identity p,
+.ui-chat .identity .mood-label,
+.ui-chat .privacy-note,
+.ui-chat .history-sidebar__header p,
+.ui-chat .history-item__preview,
+.ui-chat .history-item__meta,
+.ui-chat .field small,
+.ui-chat .toggle-row small,
+.ui-chat .memory-item__content small,
+.ui-chat .world-card__now p,
+.ui-chat .world-card__next small,
+.ui-chat .hub-item__content small,
+.ui-chat .health-details p,
+.ui-chat .topic-item__content small,
+.ui-chat .life-item__content small,
+.ui-chat .moments-privacy,
+.ui-chat .voice-call-note,
+.ui-chat .voice-call-hint,
+.ui-chat .chat-app small,
+.ui-chat .chat-app time {
+  color: var(--ui-muted);
+}
+
+.ui-chat #connection-label,
+.ui-chat .connection-dot--online + #connection-label {
+  color: var(--ui-muted);
+}
+
+.ui-chat .connection-dot {
+  background: #777;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.ui-chat .connection-dot--online {
+  background: #1f9d63;
+  box-shadow: 0 0 0 3px rgba(31, 157, 99, 0.13);
+}
+
+.ui-chat .icon-button,
+.ui-chat .history-new-button,
+.ui-chat .call-control {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+  box-shadow: none;
+}
+
+.ui-chat .icon-button:hover,
+.ui-chat .history-new-button:hover,
+.ui-chat .call-control:hover {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-canvas);
+}
+
+.ui-chat .header-heart {
+  color: var(--mai-accent);
+}
+
+.ui-chat .messages {
+  background: linear-gradient(180deg, var(--ui-white), #fbfbfb);
+  scrollbar-color: #bdbdbd transparent;
+}
+
+.ui-chat .bubble {
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  background: var(--ui-white);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.ui-chat .message--assistant .bubble {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+}
+
+.ui-chat .message--user .bubble {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+}
+
+.ui-chat .message--proactive .bubble {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+}
+
+.ui-chat .message--pending .bubble {
+  color: var(--ui-faint);
+  border-color: var(--ui-line);
+  background: var(--ui-canvas);
+}
+
+.ui-chat .message-time {
+  color: var(--ui-faint);
+}
+
+.ui-chat .typing-dot {
+  background: #737373;
+}
+
+.ui-chat .notice {
+  color: var(--ui-danger);
+  border-color: #e6aaa5;
+  background: #fff4f3;
+}
+
+.ui-chat .composer {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-white);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.09);
+}
+
+.ui-chat .composer:focus-within {
+  border-color: var(--ui-text);
+  box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08), 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.ui-chat #message-input {
+  color: var(--ui-text);
+  background: transparent;
+}
+
+.ui-chat #message-input::placeholder {
+  color: #777b80;
+  opacity: 1;
+}
+
+.ui-chat .voice-input-button {
+  color: var(--ui-muted);
+  border-color: transparent;
+  background: transparent;
+}
+
+.ui-chat .voice-input-button:hover {
+  color: var(--ui-text);
+  background: var(--ui-canvas);
+}
+
+.ui-chat .voice-input-button--listening {
+  color: var(--mai-accent);
+  border-color: #d8a9bd;
+  background: var(--mai-tint);
+  box-shadow: 0 0 0 4px rgba(163, 63, 110, 0.1);
+}
+
+.ui-chat .send-button,
+.ui-chat .button--primary,
+.ui-chat .moment-reply-button {
+  color: #fff;
+  border-color: var(--mai-accent);
+  background: var(--mai-accent);
+  box-shadow: none;
+}
+
+.ui-chat .send-button:hover,
+.ui-chat .button--primary:hover,
+.ui-chat .moment-reply-button:hover {
+  color: #fff;
+  background: var(--mai-accent-strong);
+}
+
+.ui-chat .history-scrim,
+.ui-chat .overlay {
+  background: rgba(17, 17, 17, 0.34);
+}
+
+.ui-chat .history-sidebar,
+.ui-chat .settings-card,
+.ui-chat .memory-card,
+.ui-chat .shared-life-card,
+.ui-chat .life-card,
+.ui-chat .moments-card,
+.ui-chat .voice-call-card {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+  box-shadow: var(--ui-shadow);
+}
+
+.ui-chat .history-sidebar {
+  border-right-color: var(--ui-line);
+}
+
+.ui-chat .history-item,
+.ui-chat .toggle-group,
+.ui-chat .voice-settings-panel,
+.ui-chat .local-voice-install,
+.ui-chat .memory-item,
+.ui-chat .world-card,
+.ui-chat .hub-item,
+.ui-chat .continuity-summary,
+.ui-chat .health-card,
+.ui-chat .topic-item,
+.ui-chat .mind-panel,
+.ui-chat .weather-panel,
+.ui-chat .life-item,
+.ui-chat .moment-card,
+.ui-chat .voice-call-transcript {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-canvas);
+  box-shadow: none;
+}
+
+.ui-chat .history-item:hover,
+.ui-chat .hub-item:hover,
+.ui-chat .topic-item:hover {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-subtle);
+}
+
+.ui-chat .history-item--active,
+.ui-chat .memory-item--pinned,
+.ui-chat .hub-item--pinned,
+.ui-chat .topic-item--active {
+  border-color: #c78da8;
+  background: var(--mai-tint);
+}
+
+.ui-chat .history-item__title,
+.ui-chat .memory-item__content p,
+.ui-chat .hub-item__content p,
+.ui-chat .topic-item__content p,
+.ui-chat .life-item__content p,
+.ui-chat .moment-card__content,
+.ui-chat .moment-comment p,
+.ui-chat .voice-call-line {
+  color: var(--ui-text);
+}
+
+.ui-chat .field textarea,
+.ui-chat .field select,
+.ui-chat .frequency-fields input,
+.ui-chat .voice-select-grid select,
+.ui-chat .memory-add input,
+.ui-chat .memory-add select,
+.ui-chat .person-editor input,
+.ui-chat .continuity-editor select,
+.ui-chat .continuity-search,
+.ui-chat .life-add select,
+.ui-chat .moment-reply-form textarea {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-white);
+}
+
+.ui-chat select option {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-chat .field textarea:focus,
+.ui-chat .field select:focus,
+.ui-chat .memory-add input:focus,
+.ui-chat .memory-add select:focus,
+.ui-chat .person-editor input:focus,
+.ui-chat .continuity-editor select:focus,
+.ui-chat .continuity-search:focus,
+.ui-chat .life-add select:focus,
+.ui-chat .moment-reply-form textarea:focus {
+  border-color: var(--mai-accent);
+  box-shadow: 0 0 0 3px rgba(163, 63, 110, 0.1);
+}
+
+.ui-chat .toggle-row + .toggle-row,
+.ui-chat .life-divider,
+.ui-chat .moment-comments,
+.ui-chat .moment-comment + .moment-comment,
+.ui-chat .history-sidebar__footer {
+  border-color: var(--ui-line);
+}
+
+.ui-chat .button,
+.ui-chat .mini-action,
+.ui-chat .memory-pin,
+.ui-chat .memory-delete,
+.ui-chat .life-item__delete {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+}
+
+.ui-chat .button--secondary:hover,
+.ui-chat .mini-action:hover,
+.ui-chat .memory-pin:hover {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-subtle);
+}
+
+.ui-chat .button--danger,
+.ui-chat .memory-delete:hover,
+.ui-chat .life-item__delete:hover,
+.ui-chat .mini-action--danger:hover {
+  color: var(--ui-danger);
+  border-color: #e3aaa5;
+  background: #fff4f3;
+}
+
+.ui-chat .shared-life-tabs {
+  border-color: var(--ui-line);
+  background: var(--ui-subtle);
+}
+
+.ui-chat .shared-life-tab {
+  color: var(--ui-muted);
+  background: transparent;
+}
+
+.ui-chat .shared-life-tab--active {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+}
+
+.ui-chat .continuity-badge,
+.ui-chat .topic-status,
+.ui-chat .moments-auto-status,
+.ui-chat .voice-call-private {
+  color: var(--mai-accent-strong);
+  border-color: #ddb4c6;
+  background: var(--mai-tint);
+}
+
+.ui-chat .continuity-badge--warning,
+.ui-chat .moments-auto-status--off {
+  color: var(--ui-warning);
+  border-color: #e2c48f;
+  background: #fff9ed;
+}
+
+.ui-chat .continuity-progress,
+.ui-chat .mind-meter,
+.ui-chat .local-voice-progress {
+  background: #dedede;
+}
+
+.ui-chat .continuity-progress i,
+.ui-chat .mind-meter i,
+.ui-chat .local-voice-progress i {
+  background: var(--mai-accent);
+  box-shadow: none;
+}
+
+.ui-chat .memory-privacy,
+.ui-chat .moments-status,
+.ui-chat .settings-status,
+.ui-chat .voice-capability-status {
+  color: var(--ui-success);
+}
+
+.ui-chat .settings-status--error,
+.ui-chat .voice-capability-status--error {
+  color: var(--ui-danger);
+}
+
+.ui-chat .voice-call-avatar {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-canvas);
+}
+
+.ui-chat .call-control--off {
+  color: var(--ui-muted);
+  background: var(--ui-subtle);
+}
+
+.ui-chat .call-control--end {
+  color: #fff;
+  border-color: #c93643;
+  background: #c93643;
+}
+
+.ui-chat .voice-call-line--user strong,
+.ui-chat .moment-comment--user strong {
+  color: var(--mai-accent-strong);
+}
+
+.ui-chat .chat-app .privacy-note {
+  color: var(--ui-muted);
+}
+
+.ui-chat .endpoint code {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-subtle);
+}
+
+/* Reality assistant and knowledge base */
+.ui-assistant {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-assistant .app-shell {
+  color: var(--ui-text);
+}
+
+.ui-assistant .hero img {
+  border-color: var(--ui-line-strong);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+}
+
+.ui-assistant .hero p,
+.ui-assistant .feature-card p,
+.ui-assistant .section-heading p,
+.ui-assistant .item-card p,
+.ui-assistant .toggle-row small,
+.ui-assistant .library-pill small {
+  color: var(--ui-muted);
+}
+
+.ui-assistant .eyebrow,
+.ui-assistant .card-label,
+.ui-assistant .item-meta,
+.ui-assistant .editor-details summary {
+  color: var(--mai-accent-strong) !important;
+}
+
+.ui-assistant .privacy-chip {
+  color: var(--ui-success);
+  border-color: #9ccdb5;
+  background: #effaf4;
+}
+
+.ui-assistant .tabs {
+  border-color: var(--ui-line);
+  background: rgba(247, 247, 247, 0.96);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.06);
+}
+
+.ui-assistant .tab {
+  color: var(--ui-muted);
+}
+
+.ui-assistant .tab:hover {
+  color: var(--ui-text);
+  background: var(--ui-hover);
+}
+
+.ui-assistant .tab.is-active {
+  color: #fff;
+  background: var(--ui-text);
+  box-shadow: none;
+}
+
+.ui-assistant .feature-card,
+.ui-assistant .item-card,
+.ui-assistant .editor-details,
+.ui-assistant .settings-form {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+}
+
+.ui-assistant .feature-card--accent {
+  border-color: #d9b1c3;
+  background: var(--mai-tint);
+}
+
+.ui-assistant .metric-row span,
+.ui-assistant .badge,
+.ui-assistant .library-pill {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-canvas);
+}
+
+.ui-assistant .button {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-white);
+}
+
+.ui-assistant .button:hover {
+  color: var(--ui-text);
+  background: var(--ui-subtle);
+}
+
+.ui-assistant .button--primary {
+  color: #fff;
+  border-color: var(--mai-accent);
+  background: var(--mai-accent);
+}
+
+.ui-assistant .button--primary:hover {
+  color: #fff;
+  background: var(--mai-accent-strong);
+}
+
+.ui-assistant .button--danger {
+  color: var(--ui-danger);
+  border-color: #e3aaa5;
+  background: #fff4f3;
+}
+
+.ui-assistant input,
+.ui-assistant select,
+.ui-assistant textarea {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-white);
+}
+
+.ui-assistant input:focus,
+.ui-assistant select:focus,
+.ui-assistant textarea:focus {
+  border-color: var(--mai-accent);
+  box-shadow: 0 0 0 3px rgba(163, 63, 110, 0.1);
+}
+
+.ui-assistant select option {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-assistant .summary-strip {
+  color: var(--ui-text);
+  border-left-color: var(--mai-accent);
+  background: var(--mai-tint);
+}
+
+.ui-assistant .usage-track {
+  background: #dedede;
+}
+
+.ui-assistant .usage-track span {
+  background: var(--mai-accent);
+}
+
+.ui-assistant .toggle-row,
+.ui-assistant .field-row {
+  border-color: var(--ui-line);
+}
+
+.ui-assistant .toggle-row--warning {
+  background: #fff9ed;
+}
+
+.ui-assistant .notice {
+  color: var(--ui-success);
+}
+
+.ui-assistant .notice.is-error {
+  color: var(--ui-danger);
+}
+
+.ui-assistant .empty {
+  color: var(--ui-muted);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-canvas);
+}
+
+/* Focus timer */
+.ui-timer {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-timer .timer-app {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-timer h1 {
+  color: var(--ui-text);
+}
+
+.ui-timer .timer-mark {
+  color: var(--mai-accent);
+  border-color: #d9b1c3;
+  background: var(--mai-tint);
+  box-shadow: none;
+}
+
+.ui-timer header p,
+.ui-timer .timer-status,
+.ui-timer .footnote {
+  color: var(--ui-muted);
+}
+
+.ui-timer .timer-label {
+  color: var(--mai-accent-strong);
+}
+
+.ui-timer .field-title,
+.ui-timer .field span {
+  color: var(--ui-muted);
+}
+
+.ui-timer .countdown-card,
+.ui-timer .timer-form {
+  color: var(--ui-text);
+  border-color: var(--ui-line);
+  background: var(--ui-white);
+  box-shadow: var(--ui-shadow);
+}
+
+.ui-timer .timer-form {
+  padding: 16px;
+  border: 1px solid var(--ui-line);
+  border-radius: 16px;
+}
+
+.ui-timer #countdown {
+  color: var(--ui-text);
+  text-shadow: none;
+}
+
+.ui-timer .presets button,
+.ui-timer .field input,
+.ui-timer .field select,
+.ui-timer .button {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: var(--ui-white);
+}
+
+.ui-timer .presets button:hover,
+.ui-timer .button--secondary:hover {
+  background: var(--ui-subtle);
+}
+
+.ui-timer .presets button.is-selected {
+  color: var(--mai-accent-strong);
+  border-color: #c78da8;
+  background: var(--mai-tint);
+}
+
+.ui-timer .field select:focus {
+  border-color: var(--mai-accent);
+  box-shadow: 0 0 0 3px rgba(163, 63, 110, 0.1);
+}
+
+.ui-timer .field select option {
+  color: var(--ui-text);
+  background: var(--ui-white);
+}
+
+.ui-timer .button--primary {
+  color: #fff;
+  border-color: var(--mai-accent);
+  background: var(--mai-accent);
+}
+
+.ui-timer .button--primary:hover {
+  background: var(--mai-accent-strong);
+}
+
+.ui-timer .notice {
+  color: var(--ui-success);
+}
+
+.ui-timer footer {
+  border-color: var(--ui-line);
+}
+
+/* The pet window stays transparent; only floating UI becomes white. */
+.ui-pet {
+  color: var(--ui-text);
+}
+
+.ui-pet .speech,
+.ui-pet .status,
+.ui-pet .hint {
+  color: var(--ui-text);
+  border-color: var(--ui-line-strong);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+}
+
+.ui-pet .speech::after {
+  border-top-color: var(--ui-white);
+}
+
+.ui-pet .status {
+  color: var(--ui-text);
+}
+
+.ui-pet .hint {
+  color: var(--ui-muted);
+}

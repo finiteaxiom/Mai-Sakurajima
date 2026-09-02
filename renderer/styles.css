@@ -1,0 +1,297 @@
+:root {
+  color-scheme: dark;
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+
+body {
+  display: grid;
+  place-items: start;
+}
+
+#pet-root {
+  position: relative;
+  width: 310px;
+  height: 390px;
+  padding-top: 10px;
+}
+
+.speech {
+  position: relative;
+  z-index: 12;
+  width: 270px;
+  min-height: 58px;
+  margin: 0 auto 2px;
+  padding: 11px 16px;
+  display: grid;
+  place-items: center;
+  color: #fff8fc;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  letter-spacing: 0.02em;
+  background:
+    linear-gradient(135deg, rgba(48, 38, 58, 0.94), rgba(86, 54, 78, 0.94));
+  border: 1px solid rgba(255, 190, 222, 0.56);
+  border-radius: 17px;
+  box-shadow:
+    0 8px 24px rgba(24, 12, 27, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform-origin: 76% 100%;
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+
+.speech::after {
+  content: "";
+  position: absolute;
+  right: 55px;
+  bottom: -8px;
+  width: 15px;
+  height: 15px;
+  background: #57404f;
+  border-right: 1px solid rgba(255, 190, 222, 0.56);
+  border-bottom: 1px solid rgba(255, 190, 222, 0.56);
+  transform: rotate(45deg);
+}
+
+.speech--hidden {
+  opacity: 0;
+  transform: translateY(5px) scale(0.97);
+}
+
+.stage {
+  position: relative;
+  z-index: 4;
+  width: 260px;
+  height: 270px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  filter: drop-shadow(0 12px 9px rgba(17, 10, 20, 0.2));
+}
+
+.stage:active {
+  cursor: grabbing;
+}
+
+.stage.head-hover {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ctext y='22' font-size='22'%3E%E2%99%A5%3C/text%3E%3C/svg%3E") 11 11, pointer;
+}
+
+#sprite {
+  position: absolute;
+  left: 10px;
+  top: 3px;
+  width: 240px;
+  height: 260px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+}
+
+.prop {
+  position: absolute;
+  z-index: 8;
+  min-width: 36px;
+  text-align: center;
+  font-family: "Segoe UI Emoji", "Microsoft YaHei UI", sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  color: #fff;
+  text-shadow:
+    0 2px 0 rgba(40, 25, 38, 0.7),
+    0 0 8px rgba(255, 220, 238, 0.72);
+  pointer-events: none;
+}
+
+.prop--lazy {
+  right: 30px;
+  top: 72px;
+  animation: soft-float 1.8s ease-in-out infinite;
+}
+
+.prop--sleep {
+  right: 31px;
+  top: 48px;
+  color: #dbc8ff;
+  font-size: 27px;
+  font-weight: 800;
+  animation: zzz 1.9s ease-in-out infinite;
+}
+
+.prop--snack {
+  right: 38px;
+  bottom: 66px;
+  animation: nibble 0.7s ease-in-out infinite alternate;
+}
+
+.prop--study,
+.prop--work {
+  left: 50%;
+  bottom: 41px;
+  transform: translateX(-50%);
+  animation: focus-bob 1.4s ease-in-out infinite;
+}
+
+.prop--angry {
+  right: 35px;
+  top: 51px;
+  color: #ff5d72;
+  font-size: 39px;
+  font-family: "Microsoft YaHei UI", sans-serif;
+  font-weight: 900;
+  animation: angry-shake 0.28s steps(2, end) infinite;
+}
+
+.prop--love {
+  right: 32px;
+  top: 57px;
+  color: #ff6f9f;
+  animation: heartbeat 0.72s ease-in-out infinite;
+}
+
+.effect-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.heart-particle {
+  position: absolute;
+  left: 50%;
+  top: 112px;
+  color: #ff6f9f;
+  font-family: "Segoe UI Symbol", sans-serif;
+  font-size: var(--size);
+  text-shadow: 0 2px 7px rgba(255, 80, 143, 0.5);
+  animation: heart-rise var(--duration) ease-out forwards;
+}
+
+.head-glow {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  top: 38px;
+  width: 96px;
+  height: 103px;
+  display: grid;
+  place-items: start end;
+  padding: 6px;
+  color: #ff7aa8;
+  font-size: 15px;
+  opacity: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease, border-color 120ms ease;
+  pointer-events: none;
+}
+
+.head-hover .head-glow {
+  opacity: 0.9;
+  border-color: rgba(255, 140, 184, 0.2);
+}
+
+.status {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: 19px;
+  transform: translateX(-50%);
+  min-width: 112px;
+  height: 29px;
+  padding: 0 11px 0 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 246, 251, 0.96);
+  font-size: 12px;
+  background: rgba(37, 27, 42, 0.8);
+  border: 1px solid rgba(255, 190, 222, 0.42);
+  border-radius: 999px;
+  box-shadow: 0 5px 14px rgba(25, 14, 28, 0.25);
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  z-index: 19;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%) translateY(3px);
+  width: max-content;
+  color: rgba(255, 245, 251, 0.86);
+  font-size: 10px;
+  text-shadow: 0 1px 4px rgba(20, 10, 22, 0.8);
+  opacity: 0;
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+
+#pet-root:hover .hint {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@keyframes soft-float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); opacity: 0.76; }
+  50% { transform: translateY(-7px) rotate(4deg); opacity: 1; }
+}
+
+@keyframes zzz {
+  0%, 100% { transform: translate(0, 7px) scale(0.88); opacity: 0.48; }
+  50% { transform: translate(7px, -6px) scale(1.06); opacity: 1; }
+}
+
+@keyframes nibble {
+  from { transform: rotate(-7deg) translateY(1px); }
+  to { transform: rotate(7deg) translateY(-3px); }
+}
+
+
+@keyframes angry-shake {
+  from { transform: translateX(-3px) rotate(-7deg); }
+  to { transform: translateX(3px) rotate(7deg); }
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(0.9); }
+  35% { transform: scale(1.2); }
+  55% { transform: scale(1); }
+  72% { transform: scale(1.15); }
+}
+
+@keyframes heart-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6) rotate(0);
+  }
+  15% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), -135px) scale(1.35) rotate(var(--rotate));
+  }
+}
+
+@keyframes focus-bob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}

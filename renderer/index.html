@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+    <title>麻衣桌宠</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="light-theme.css">
+  </head>
+  <body class="ui-pet">
+    <main id="pet-root" aria-label="麻衣桌宠">
+      <section id="speech" class="speech speech--hidden" aria-live="polite">
+        <span id="speech-text">我在这里，陪着你。</span>
+      </section>
+
+      <section id="stage" class="stage" aria-label="拖动麻衣，或者轻点她的头">
+        <canvas id="sprite" width="192" height="208"></canvas>
+        <div id="prop" class="prop" aria-hidden="true"></div>
+        <div id="effect-layer" class="effect-layer" aria-hidden="true"></div>
+        <div id="head-glow" class="head-glow" aria-hidden="true">♥</div>
+      </section>
+
+      <footer class="status">
+        <span id="state-label">安静陪伴</span>
+      </footer>
+      <div id="hint" class="hint">拖动我 · 摸摸头 · 双击聊天 · 右键菜单</div>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
