@@ -35,6 +35,9 @@ function createHarness(overrides = {}) {
       calls.push('append-history');
       return session;
     },
+    applyReplyState(input) {
+      calls.push(['apply-reply-state', input]);
+    },
     mergeCommitments(_items, source) {
       calls.push(['merge-commitments', source]);
     },

@@ -370,7 +370,7 @@ function rebuildPeopleFromSessions(existing, sessions, options = {}) {
   const stats = { messages: 0, candidates: 0, added: 0, updated: 0, skipped: 0 };
   for (const session of Array.isArray(sessions) ? sessions : []) {
     for (const message of Array.isArray(session.messages) ? session.messages : []) {
-      if (message.role !== 'user') continue;
+      if (message.role !== 'user' || message.contextSource === 'workspace') continue;
       stats.messages += 1;
       const candidates = extractPersonCandidates(message.content);
       stats.candidates += candidates.length;

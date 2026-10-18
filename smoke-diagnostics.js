@@ -11,12 +11,14 @@ function serializeError(error) {
 }
 
 function rendererSmokeMode(environment = process.env) {
+  if (environment.MAI_RESTORE_PROTECTION_SMOKE === '1') return 'restore_protection';
   if (environment.MAI_UI_SMOKE === '1') return 'ui';
   if (environment.MAI_CLOSE_CHAT_SMOKE === '1') return 'chat_close';
   return '';
 }
 
 function rendererSmokeOutput(environment = process.env) {
+  if (environment.MAI_RESTORE_PROTECTION_SMOKE === '1') return String(environment.MAI_RESTORE_PROTECTION_OUTPUT || '');
   if (environment.MAI_UI_SMOKE === '1') return String(environment.MAI_UI_SMOKE_OUTPUT || '');
   if (environment.MAI_CLOSE_CHAT_SMOKE === '1') return String(environment.MAI_CLOSE_CHAT_SMOKE_OUTPUT || '');
   return '';

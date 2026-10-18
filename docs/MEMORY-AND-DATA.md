@@ -22,11 +22,14 @@ Reader（读取方）可以消费公开状态或上下文。Writer（写入方�
 | `settings` | `mai-pet-deepseek-settings.json`；DeepSeek API Key 优先使用 Electron `safeStorage` 加密 |
 | `knowledgeState` | `mai-knowledge-index.json` |
 | Work Project / WorkSession | `mai-work.json`；由 `work/work-store.js` 独立原子写入，不与 Chat sessions 混存 |
-| 自动备份 | `backups/mai-backup-*.json`，由 `automatic-backup-service.js` 进行原子写入与保留 |
+| 自定义资源 | userData 中的自定义壁纸与麻衣/用户头像 JPEG |
+| 自动备份 | `backups/mai-backup-*.json`，由 `automatic-backup-service.js` 原子写入；不会自动删除已有备份 |
 
-`loadMemory()` 读取后调用 `normalizeMemoryState()`；`saveMemory()` 在写出前同步生活中枢派生数据并将 `version` 设为 v16。对可识别字段会做上限、类型与格式规范化；未知顶层字段随已有对象保留，不应被无关迁移清空。损坏 JSON 会先复制为 `mai-pet-memory.unreadable-*.backup.json`，再恢复可启动的规范状态。
+`json-persistence.js` 在目标同目录创建独占临时文件，写入并同步后直接替换目标；替换失败时保留旧目标、清理临时文件并向调用者抛错，不先删除目标。Memory、Settings、Knowledge 和 Work 保存失败时，Main/WorkStore 回滚内存快照并将错误返回调用方。缺失文件、JSON 解析错误和访问错误分别处理；访问或写入错误会停止安全加载，不会被当作空数据。
 
-`WorkStore` 的文件损坏时同样先保留 `mai-work.json.unreadable-*.backup.json`，再以空的 Work 数据状态启动。它保存项目名称、每个项目显式选择的 Workspace、WorkSession 的用户消息、最终回复、终态与最小操作结果；不保存文件正文、完整内部 Event trace、reasoning content、Secret 或完整模型 Context。
+Memory、Settings、Knowledge 与 Work 文件 JSON 损坏时，Mai 先用原始字节创建 `.unreadable-*.backup.json`，成功保护后才可写入规范空状态；保护或恢复写入失败会中止启动并保留源文件。Memory Schema 升级前的 `.before-v16-from-v<旧版本>.backup.json` 也必须先成功创建；同名备份内容冲突或创建失败时不提交升级。WorkStore 的损坏恢复遵循相同规则。
+
+`WorkStore` 保存项目名称、每个项目显式选择的 Workspace、WorkSession 的用户消息、最终回复、终态与最小操作结果；不保存文件正文、完整内部 Event trace、reasoning content、Secret 或完整模型 Context。加载时要求根节点为对象；`projects`、`sessions` 可以在旧数据中缺失，但只要存在就必须是对象数组；旧会话也可省略 `messages`，消息可省略 `operationResults`。存在的消息和操作结果必须满足对应的对象、数组及必需字段结构，避免归一化静默过滤坏记录。解析错误与已识别结构错误会先保护原始字节，再恢复默认状态；若原文保护或恢复写入失败，该实例会拒绝后续 mutation。归一化异常会先尝试保护原文件，随后锁住该实例；访问错误单独传播。任一加载失败后，后续保存保持阻断，直到一次显式 `load()` 成功，避免调用方捕获错误后覆盖源文件。
 
 ## `memoryState` 主要结构
 
@@ -99,6 +102,14 @@ memoryState (Schema v16)
 `retrievalCount` 与 `lastRetrievedAt` 记录实际进入上下文的事实；`useCount` 不参与召回排序，避免“越被召回越容易继续被召回”的反馈循环。assistant 或模型文本不能单独成为用户事实来源；没有可定位用户原话的记忆应保持不确定或拒绝写入。
 
 ## 备份、恢复与迁移
+
+完整备份格式 v2 包含 Memory、Settings（移除 API Key 及加密凭据字段）、Knowledge 索引/文档 chunks、Work 项目与工作记录、自定义壁纸和头像 JPEG；Knowledge 文档的外部 `sourcePath` 只作为引用，不会复制外部源文件。自动备份、手动完整备份和数据导出共用该数据快照和凭据排除规则。旧格式 v1 仍可读取；因旧备份没有 Work 和资源字段，恢复时保留当前 Work 与自定义资源。恢复任何格式都忽略备份中的凭据并保留本机当前 API Key；若本机没有可用凭据，恢复后提示重新配置。
+
+恢复前会先完成结构/校验值验证、归一化和资源检查，并创建一份不含凭据的恢复前自动备份。Memory、Settings、Knowledge、Work、壁纸与两张头像通过 `file-set-transaction.js` 的恢复日志和原字节副本共同提交；中途失败会回滚，若进程中断则下次启动先恢复事务，再加载产品数据。缺失自定义资源会明确报告并回退相应外观选择；外部 Knowledge 源文件不属于备份内容，恢复后不可访问的引用会在结果中列出。恢复不会清理既有历史备份。
+
+如果恢复在当前进程内无法完成回滚，Main 会进入 `restore-rollback-failed` 数据保护状态：Memory、Settings、Knowledge、WorkStore、自动/手动备份、数据导出、自定义资源导入/删除及退出保存都拒绝写入；后台定时器停止，Action Runtime 会收到取消请求，已在等待中的异步资源导入在提交文件前重新检查保护状态。Chat UI 会持续显示恢复失败、写入已停止和重启重试步骤，不会报告恢复成功。普通提交失败但事务已成功回滚时，保护状态仍保持可写。下次启动必须先成功处理事务日志及原始副本，Main 才开放产品数据加载和写入；启动恢复失败则停止启动，不执行退出自动保存。
+
+新 API Key 只允许写入通过验证的 Electron `safeStorage` 加密字段；安全存储不可用时保存请求失败。已有旧明文 Key 在安全存储可用且加密回读验证成功前保留在本机设置中，并在 UI 显示处理提示；它不会进入备份或导出。
 
 启动时会检查每日自动备份；用户也可通过 UI 创建、列出、恢复和导出备份。备份与恢复必须保留 Schema 兼容性，且不导出 API Key。
 

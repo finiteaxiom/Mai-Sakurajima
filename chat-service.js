@@ -8,6 +8,7 @@ const REQUIRED_DEPENDENCIES = [
   'requestReply',
   'noteUserReply',
   'appendConversationHistory',
+  'applyReplyState',
   'mergeCommitments',
   'extractExplicitMemories',
   'mergeCandidateMemories',
@@ -54,7 +55,9 @@ class ChatService {
       }
     });
 
-    const session = dependencies.appendConversationHistory(messages, reply, options.sessionId);
+    const session = dependencies.appendConversationHistory(messages, reply, options.sessionId, {
+      workspaceContext: Boolean(options.workspaceContext)
+    });
     const storedMessages = Array.isArray(session?.messages) ? session.messages : [];
     const storedUserMessage = [...storedMessages]
       .reverse()
@@ -65,6 +68,13 @@ class ChatService {
       sourceMessageId: storedUserMessage?.id || '',
       sourceCreatedAt: storedUserMessage?.createdAt || new Date().toISOString()
     };
+    dependencies.applyReplyState({
+      messages,
+      reply,
+      session,
+      source: memorySource,
+      workspaceContext: options.workspaceContext || null
+    });
 
     // Workspace data is explicitly ephemeral and untrusted. The original user
     // message and final reply may remain in this conversation, but neither the

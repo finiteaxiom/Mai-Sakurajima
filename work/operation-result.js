@@ -23,4 +23,4 @@ function normalizeOperationResults(value) {
   }).filter(Boolean).slice(-50);
 }
 
-module.exports = { OPERATION_NAMES, operationResultFromToolResult, normalizeOperationResults };
+module.exports = { OPERATION_NAMES, OPERATION_TITLES, operationResultFromToolResult, normalizeOperationResults };

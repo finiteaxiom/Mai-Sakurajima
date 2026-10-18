@@ -23,9 +23,7 @@ const {
   decideProactive,
   defaultMindState,
   effectiveDueAt,
-  extractBehaviorPatternCandidates,
   localDateKey,
-  mergeBehaviorPatternObservations,
   normalizeBehaviorPatterns,
   migrateMindState,
   normalizeLifeItem,
@@ -86,14 +84,11 @@ const {
   normalizeMemoryCorrection,
   normalizeTopic,
   selectEpisodeContext,
-  selectTopicContext,
-  updateTopicThreads
+  selectTopicContext
 } = require('./shared-life');
 const {
   buildDigests,
-  extractPersonCandidates,
   lifeHubContext: buildLifeHubContext,
-  mergePeople,
   normalizeDigest,
   normalizePerson,
   normalizeTemporalMetadata,
@@ -106,8 +101,16 @@ const {
   createBackupBundle,
   createPortableExport,
   inspectDatabase,
-  validateBackupBundle
+  prepareBackupRestore
 } = require('./backup-engine');
+const {
+  ensureFileBackup,
+  preserveFileAtomically,
+  readJsonFile,
+  writeFileAtomic: persistFileAtomic,
+  writeJsonAtomic: persistJsonAtomic
+} = require('./json-persistence');
+const { commitFileSetAtomically, recoverInterruptedFileSetTransaction } = require('./file-set-transaction');
 const {
   continuityContext: buildContinuityContext,
   continuityProactiveCue,
@@ -125,6 +128,8 @@ const { VoiceService } = require('./voice-service');
 const { LocalTtsService } = require('./local-tts-service');
 const { describeVoiceProfile } = require('./voice-emotion');
 const { ChatService } = require('./chat-service');
+const { createChatTurnStateWriter } = require('./chat-turn-state');
+const { getApiKey: getStoredApiKey, migratePlaintextApiKey, setApiKey: setStoredApiKey } = require('./api-key-storage');
 const { ChatRequestService } = require('./chat-request-service');
 const { serializeHistoricalAssistantReplies } = require('./chat-history-boundary');
 const { createLlmCacheDiagnosticLogger } = require('./llm-cache-diagnostics');
@@ -198,7 +203,7 @@ const {
   resetMind
 } = require('./companion-state');
 const { createAutomaticBackupService } = require('./automatic-backup-service');
-const { WorkStore } = require('./work/work-store');
+const { WorkStore, normalizeWorkState } = require('./work/work-store');
 const { WorkspaceCapabilityGateway } = require('./workspace-capability-gateway');
 const { registerWorkspaceCapabilityIpc } = require('./workspace-capability-ipc');
 const actionRuntimeModules = (() => {
@@ -232,7 +237,16 @@ if (rendererSmoke) {
 }
 
 const storage = initializeStorage(app);
-const workStore = new WorkStore({ filePath: storage.workPath });
+const productDataWriteProtection = {
+  state: 'startup-recovery-pending',
+  rollbackError: null,
+  userMessage: ''
+};
+let startupFileSetRecovery = null;
+const workStore = new WorkStore({
+  filePath: storage.workPath,
+  beforeSave: assertProductDataWritable
+});
 let legacyAgentWorkspacePath = '';
 const voiceService = new VoiceService();
 const localTtsService = new LocalTtsService({
@@ -275,7 +289,6 @@ const MAX_MEMORY_CORRECTIONS = 1000;
 const MAX_TIMELINE_ENTRIES = 5000;
 const MAX_PEOPLE = 1000;
 const MAX_MEMORY_DIGESTS = 1200;
-const MAX_AUTOMATIC_BACKUPS = 12;
 const MAX_PROJECTS = 500;
 const MAX_HABITS = 300;
 const KNOWLEDGE_CONTEXT_TOKEN_BUDGET = 30000;
@@ -465,6 +478,7 @@ let memoryState = {
     followUpCount: 0
   }
 };
+let lastSavedMemoryState = structuredClone(memoryState);
 let settings = {
   alwaysOnTop: true,
   openAtLogin: true,
@@ -537,7 +551,89 @@ let settings = {
     lastGreetingAt: 0
   }
 };
+let lastSavedSettings = structuredClone(settings);
 let knowledgeState = defaultKnowledgeState();
+let lastSavedKnowledgeState = structuredClone(knowledgeState);
+let legacyPlaintextKeyNeedsSecureStorage = false;
+let dataStoresReadyForShutdown = false;
+
+function productDataWritesAllowed() {
+  return productDataWriteProtection.state === 'ready';
+}
+
+function assertProductDataWritable() {
+  if (productDataWritesAllowed()) return;
+  if (productDataWriteProtection.state === 'restore-rollback-failed') {
+    throw Object.assign(new Error(productDataWriteProtection.userMessage), {
+      code: 'PRODUCT_DATA_WRITE_PROTECTED',
+      recoveryJournalPath: productDataWriteProtection.rollbackError?.recoveryJournalPath || ''
+    });
+  }
+  throw Object.assign(new Error('Mai 尚未完成本地恢复事务，当前已暂停产品数据写入。'), {
+    code: 'PRODUCT_DATA_RECOVERY_PENDING'
+  });
+}
+
+function markProductDataRecoveryComplete() {
+  productDataWriteProtection.state = 'ready';
+  productDataWriteProtection.rollbackError = null;
+  productDataWriteProtection.userMessage = '';
+}
+
+function stopProductDataSchedulers() {
+  clearTimeout(proactiveGreetingTimer);
+  clearTimeout(girlfriendFollowUpTimer);
+  clearTimeout(momentPostTimer);
+  clearTimeout(reminderTimer);
+  clearInterval(activityTrackingTimer);
+  clearInterval(knowledgeRefreshTimer);
+  proactiveGreetingTimer = null;
+  girlfriendFollowUpTimer = null;
+  momentPostTimer = null;
+  reminderTimer = null;
+  activityTrackingTimer = null;
+  knowledgeRefreshTimer = null;
+  try {
+    const cancellation = actionRuntimeManager?.cancelAll?.();
+    cancellation?.catch?.((error) => console.error('Could not cancel Work after restore rollback failure:', error));
+  } catch (error) {
+    console.error('Could not cancel Work after restore rollback failure:', error);
+  }
+}
+
+function freezeProductDataWritesAfterRollbackFailure(error) {
+  productDataWriteProtection.state = 'restore-rollback-failed';
+  productDataWriteProtection.rollbackError = error;
+  const journalName = path.basename(error?.recoveryJournalPath || 'mai-restore-transaction.json');
+  productDataWriteProtection.userMessage = `备份恢复失败，自动回滚未能完成。为保护数据，Mai 已暂停所有本地数据写入。请关闭并重新启动 Mai，让启动时重试事务恢复；请不要删除或移动事务日志 ${journalName} 及其原始副本。若重试仍失败，请保留 Mai 数据目录并联系支持。`;
+  stopProductDataSchedulers();
+  return {
+    canceled: false,
+    restored: false,
+    writeProtectionActive: true,
+    message: productDataWriteProtection.userMessage
+  };
+}
+
+function saveProductDataOnShutdown() {
+  if (!dataStoresReadyForShutdown) return { memorySaved: false, knowledgeSaved: false, skipped: true };
+  const result = { memorySaved: false, knowledgeSaved: false, skipped: false };
+  try {
+    saveMemory();
+    result.memorySaved = true;
+  } catch (error) {
+    result.memoryError = String(error?.code || error?.message || error);
+    console.error('Could not save memory during shutdown:', error);
+  }
+  try {
+    saveKnowledge();
+    result.knowledgeSaved = true;
+  } catch (error) {
+    result.knowledgeError = String(error?.code || error?.message || error);
+    console.error('Could not save knowledge during shutdown:', error);
+  }
+  return result;
+}
 let chatService = null;
 let chatRequestService = null;
 const actionRuntimeManager = (() => {
@@ -583,6 +679,60 @@ function customAvatarPaths() {
   };
 }
 
+function requireCustomResourceTarget(filePath) {
+  const allowed = [customWallpaperPath(), ...Object.values(customAvatarPaths())].map((item) => path.resolve(item));
+  const target = path.resolve(filePath);
+  if (!allowed.includes(target)) throw new Error('不支持写入这个自定义资源路径。');
+  return target;
+}
+
+function writeCustomResource(filePath, bytes) {
+  assertProductDataWritable();
+  return persistFileAtomic(requireCustomResourceTarget(filePath), bytes);
+}
+
+function deleteCustomResource(filePath) {
+  assertProductDataWritable();
+  const target = requireCustomResourceTarget(filePath);
+  try { fs.unlinkSync(target); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+function backupResource(filePath, maxBytes, label) {
+  let bytes;
+  try { bytes = fs.readFileSync(filePath); } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+  if (!bytes.length || bytes.length > maxBytes || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    throw new Error(`${label}文件无效或超出备份上限，完整备份已取消。`);
+  }
+  return { mimeType: 'image/jpeg', dataBase64: bytes.toString('base64') };
+}
+
+function snapshotCustomResources() {
+  const avatars = customAvatarPaths();
+  return {
+    customWallpaper: backupResource(customWallpaperPath(), 20 * 1024 * 1024, '自定义壁纸'),
+    customAvatars: {
+      mai: backupResource(avatars.mai, 10 * 1024 * 1024, '麻衣头像'),
+      user: backupResource(avatars.user, 10 * 1024 * 1024, '用户头像')
+    }
+  };
+}
+
+function snapshotUserDataForBackup() {
+  return {
+    appVersion: app.getVersion(),
+    memory: structuredClone(memoryState),
+    settings: structuredClone(settings),
+    knowledge: structuredClone(knowledgeState),
+    work: workStore.snapshot(),
+    resources: snapshotCustomResources()
+  };
+}
+
 function currentAvatarState() {
   return publicAvatarState(settings.appearance?.avatars, customAvatarPaths());
 }
@@ -612,15 +762,7 @@ async function importCustomAvatar(ownerWindow, target) {
   const encoded = image.toJPEG(90);
   if (!encoded.length || encoded.length > 10 * 1024 * 1024) throw new Error('无法在安全大小内保存这张头像。');
   const targetPath = customAvatarPaths()[normalizedTarget];
-  const temporaryPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-  try {
-    await fs.promises.writeFile(temporaryPath, encoded, { flag: 'wx' });
-    await fs.promises.rename(temporaryPath, targetPath);
-  } catch (error) {
-    try { await fs.promises.unlink(temporaryPath); } catch {}
-    throw error;
-  }
+  writeCustomResource(targetPath, encoded);
   return true;
 }
 
@@ -643,119 +785,150 @@ async function importCustomWallpaper(ownerWindow) {
   const encoded = image.toJPEG(90);
   if (!encoded.length || encoded.length > 20 * 1024 * 1024) throw new Error('无法在安全大小内保存这张壁纸。');
   const targetPath = customWallpaperPath();
-  const temporaryPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-  try {
-    await fs.promises.writeFile(temporaryPath, encoded, { flag: 'wx' });
-    await fs.promises.rename(temporaryPath, targetPath);
-  } catch (error) {
-    try { await fs.promises.unlink(temporaryPath); } catch {}
-    throw error;
-  }
+  writeCustomResource(targetPath, encoded);
   return true;
 }
 
 function loadKnowledge() {
+  const source = knowledgePath();
+  let loaded;
   try {
-    knowledgeState = fs.existsSync(knowledgePath())
-      ? normalizeKnowledgeState(JSON.parse(fs.readFileSync(knowledgePath(), 'utf8')))
-      : defaultKnowledgeState();
+    loaded = readJsonFile(source);
+    if (loaded.exists && (!loaded.value || typeof loaded.value !== 'object' || Array.isArray(loaded.value))) {
+      throw Object.assign(new Error('Knowledge JSON root must be an object.'), { code: 'JSON_SHAPE_ERROR' });
+    }
   } catch (error) {
-    console.error('Could not load Mai knowledge index:', error);
+    if (!['JSON_PARSE_ERROR', 'JSON_SHAPE_ERROR'].includes(error?.code)) throw error;
+    const recoveryPath = `${source}.unreadable-${safeFileTimestamp()}.backup.json`;
+    preserveFileAtomically(source, recoveryPath);
+    console.error(`Unreadable Mai knowledge index was preserved at ${recoveryPath}:`, error);
     knowledgeState = defaultKnowledgeState();
+    lastSavedKnowledgeState = structuredClone(knowledgeState);
+    saveKnowledge();
+    return;
   }
+  knowledgeState = loaded.exists ? normalizeKnowledgeState(loaded.value) : defaultKnowledgeState();
+  lastSavedKnowledgeState = structuredClone(knowledgeState);
 }
 
 function saveKnowledge() {
+  const rollbackState = structuredClone(lastSavedKnowledgeState || knowledgeState);
   try {
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    writeJsonAtomic(knowledgePath(), normalizeKnowledgeState(knowledgeState));
+    assertProductDataWritable();
+    const normalized = normalizeKnowledgeState(knowledgeState);
+    persistJsonAtomic(knowledgePath(), normalized);
+    knowledgeState = normalized;
+    lastSavedKnowledgeState = structuredClone(normalized);
   } catch (error) {
-    console.error('Could not save Mai knowledge index:', error);
+    knowledgeState = rollbackState;
+    throw error;
   }
 }
 
 function loadSettings() {
+  let loaded;
   try {
-    const stored = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
-    const storedDeepSeek = stored.deepseek || {};
-    legacyAgentWorkspacePath = typeof stored?.agent?.workspacePath === 'string' ? stored.agent.workspacePath.trim().slice(0, 2000) : '';
-    settings = {
-      ...settings,
-      ...stored,
-      deepseek: {
-        ...settings.deepseek,
-        ...(stored.deepseek || {})
-      },
-      reminder: {
-        ...settings.reminder,
-        ...(stored.reminder || {})
-      },
-      assistant: {
-        ...settings.assistant,
-        ...(stored.assistant || {})
-      },
-      model: {
-        ...settings.model,
-        ...(stored.model || {}),
-        provider: PROVIDER_IDS.DEEPSEEK
-      },
-      agent: normalizeActionConfiguration({
-        ...settings.agent,
-        ...(stored.agent && typeof stored.agent === 'object' ? stored.agent : {})
-      }),
-      voice: {
-        ...settings.voice,
-        ...(stored.voice || {})
-      },
-      appearance: {
-        ...settings.appearance,
-        ...(stored.appearance || {}),
-        avatars: {
-          ...settings.appearance.avatars,
-          ...(stored.appearance?.avatars || {})
-        }
-      }
-    };
-    settings.appearance = normalizeAppearanceSettings(settings.appearance);
-    const legacyProactive = PROACTIVE_POLICIES[storedDeepSeek.proactiveFrequency]
-      || PROACTIVE_POLICIES.balanced;
-    const legacyGirlfriend = GIRLFRIEND_INTENSITIES[storedDeepSeek.girlfriendIntensity]
-      || GIRLFRIEND_INTENSITIES.caring;
-    if (!Number.isFinite(Number(storedDeepSeek.proactiveIntervalMinutes))) {
-      settings.deepseek.proactiveIntervalMinutes = legacyProactive.intervalMinutes;
+    loaded = readJsonFile(settingsPath());
+    if (loaded.exists && (!loaded.value || typeof loaded.value !== 'object' || Array.isArray(loaded.value))) {
+      throw Object.assign(new Error('Settings JSON root must be an object.'), { code: 'JSON_SHAPE_ERROR' });
     }
-    if (!Number.isFinite(Number(storedDeepSeek.proactiveDailyLimit))) {
-      settings.deepseek.proactiveDailyLimit = legacyProactive.dailyLimit;
-    }
-    if (!Number.isFinite(Number(storedDeepSeek.girlfriendIntervalMinutes))) {
-      settings.deepseek.girlfriendIntervalMinutes = legacyGirlfriend.firstDelayMinutes;
-    }
-    if (!Number.isFinite(Number(storedDeepSeek.girlfriendMaxFollowUps))) {
-      settings.deepseek.girlfriendMaxFollowUps = legacyGirlfriend.maxFollowUps;
-    }
-    const hadRetiredSetting = (
-      Object.prototype.hasOwnProperty.call(stored, 'outfit')
-      || Object.prototype.hasOwnProperty.call(stored, 'outfitCatalogVersion')
-      || Object.prototype.hasOwnProperty.call(stored, 'affection')
-    );
-    delete settings.outfit;
-    delete settings.outfitCatalogVersion;
-    delete settings.affection;
-    if (hadRetiredSetting) {
-      saveSettings();
-    }
-  } catch {
-    // The defaults are exactly what a first launch needs.
+  } catch (error) {
+    if (!['JSON_PARSE_ERROR', 'JSON_SHAPE_ERROR'].includes(error?.code)) throw error;
+    const recoveryPath = `${settingsPath()}.unreadable-${safeFileTimestamp()}.backup.json`;
+    preserveFileAtomically(settingsPath(), recoveryPath);
+    console.error(`Unreadable Mai settings were preserved at ${recoveryPath}:`, error);
+    lastSavedSettings = structuredClone(settings);
+    saveSettings();
+    return;
   }
+  if (!loaded.exists) {
+    lastSavedSettings = structuredClone(settings);
+    return;
+  }
+
+  const stored = loaded.value;
+  const storedDeepSeek = stored.deepseek || {};
+  legacyAgentWorkspacePath = typeof stored?.agent?.workspacePath === 'string' ? stored.agent.workspacePath.trim().slice(0, 2000) : '';
+  settings = {
+    ...settings,
+    ...stored,
+    deepseek: {
+      ...settings.deepseek,
+      ...(stored.deepseek || {})
+    },
+    reminder: {
+      ...settings.reminder,
+      ...(stored.reminder || {})
+    },
+    assistant: {
+      ...settings.assistant,
+      ...(stored.assistant || {})
+    },
+    model: {
+      ...settings.model,
+      ...(stored.model || {}),
+      provider: PROVIDER_IDS.DEEPSEEK
+    },
+    agent: normalizeActionConfiguration({
+      ...settings.agent,
+      ...(stored.agent && typeof stored.agent === 'object' ? stored.agent : {})
+    }),
+    voice: {
+      ...settings.voice,
+      ...(stored.voice || {})
+    },
+    appearance: {
+      ...settings.appearance,
+      ...(stored.appearance || {}),
+      avatars: {
+        ...settings.appearance.avatars,
+        ...(stored.appearance?.avatars || {})
+      }
+    }
+  };
+  settings.appearance = normalizeAppearanceSettings(settings.appearance);
+  const legacyProactive = PROACTIVE_POLICIES[storedDeepSeek.proactiveFrequency]
+    || PROACTIVE_POLICIES.balanced;
+  const legacyGirlfriend = GIRLFRIEND_INTENSITIES[storedDeepSeek.girlfriendIntensity]
+    || GIRLFRIEND_INTENSITIES.caring;
+  if (!Number.isFinite(Number(storedDeepSeek.proactiveIntervalMinutes))) {
+    settings.deepseek.proactiveIntervalMinutes = legacyProactive.intervalMinutes;
+  }
+  if (!Number.isFinite(Number(storedDeepSeek.proactiveDailyLimit))) {
+    settings.deepseek.proactiveDailyLimit = legacyProactive.dailyLimit;
+  }
+  if (!Number.isFinite(Number(storedDeepSeek.girlfriendIntervalMinutes))) {
+    settings.deepseek.girlfriendIntervalMinutes = legacyGirlfriend.firstDelayMinutes;
+  }
+  if (!Number.isFinite(Number(storedDeepSeek.girlfriendMaxFollowUps))) {
+    settings.deepseek.girlfriendMaxFollowUps = legacyGirlfriend.maxFollowUps;
+  }
+  const hadRetiredSetting = (
+    Object.prototype.hasOwnProperty.call(stored, 'outfit')
+    || Object.prototype.hasOwnProperty.call(stored, 'outfitCatalogVersion')
+    || Object.prototype.hasOwnProperty.call(stored, 'affection')
+  );
+  delete settings.outfit;
+  delete settings.outfitCatalogVersion;
+  delete settings.affection;
+  lastSavedSettings = structuredClone(settings);
+
+  let saveNormalizedSettings = hadRetiredSetting;
+  const keyMigration = migratePlaintextApiKey(settings, safeStorage);
+  legacyPlaintextKeyNeedsSecureStorage = keyMigration.warning;
+  if (keyMigration.changed) saveNormalizedSettings = true;
+  if (saveNormalizedSettings) saveSettings();
 }
 
 function saveSettings() {
+  const rollbackState = structuredClone(lastSavedSettings || settings);
   try {
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), 'utf8');
+    assertProductDataWritable();
+    persistJsonAtomic(settingsPath(), settings);
+    lastSavedSettings = structuredClone(settings);
   } catch (error) {
-    console.error('Could not save Mai pet settings:', error);
+    settings = rollbackState;
+    throw error;
   }
 }
 
@@ -795,6 +968,7 @@ function normalizeStoredMessage(message) {
     action: PET_ACTIONS.has(message.action) ? message.action : undefined,
     emotion: PET_EMOTIONS.has(message.emotion) ? message.emotion : undefined,
     proactive: message.proactive === true,
+    contextSource: message.contextSource === 'workspace' ? 'workspace' : undefined,
     source: ['girlfriend', 'greeting', 'reminder'].includes(message.source)
       ? message.source
       : undefined,
@@ -839,11 +1013,11 @@ function migrateLegacyAgentWorkspace() {
   if (!existing.some((project) => project.workspacePath === legacyPath)) {
     try {
       const backup = path.join(app.getPath('userData'), 'mai-pet-deepseek-settings.before-work-projects.backup.json');
-      if (fs.existsSync(settingsPath()) && !fs.existsSync(backup)) fs.copyFileSync(settingsPath(), backup);
+      ensureFileBackup(settingsPath(), backup);
       workStore.createProject({ name: existing.length ? '迁移的 Work 项目' : '默认项目', workspacePath: legacyPath });
     } catch (error) {
       console.error('Could not migrate the legacy Work workspace:', error);
-      return;
+      throw error;
     }
   }
   legacyAgentWorkspacePath = '';
@@ -855,6 +1029,21 @@ const conversationState = createConversationState({
   sessionTitleFromMessages,
   maxSessions: MAX_CHAT_SESSIONS,
   maxMessages: MAX_MESSAGES_PER_SESSION
+});
+const chatTurnStateWriter = createChatTurnStateWriter({
+  getMemoryState: () => memoryState,
+  setMemoryState: (state) => { memoryState = state; },
+  conversationState,
+  createId: makeLocalId,
+  maxContactCount: MAX_CONTACT_COUNT,
+  maxEpisodes: MAX_EPISODES,
+  maxTopicThreads: MAX_TOPIC_THREADS,
+  maxPeople: MAX_PEOPLE,
+  maxProjects: MAX_PROJECTS,
+  maxHabits: MAX_HABITS,
+  saveMemory,
+  broadcastSharedLifeState,
+  scheduleGirlfriendFollowUp
 });
 
 function normalizeLegacyAgentArchive(stored) {
@@ -1079,65 +1268,62 @@ function normalizeMemoryState(stored) {
 
 function loadMemory() {
   const source = memoryPath();
-  if (!fs.existsSync(source)) {
+  let loaded;
+  try {
+    loaded = readJsonFile(source);
+    if (loaded.exists && (!loaded.value || typeof loaded.value !== 'object' || Array.isArray(loaded.value))) {
+      throw Object.assign(new Error('Memory JSON root must be an object.'), { code: 'JSON_SHAPE_ERROR' });
+    }
+  } catch (error) {
+    if (!['JSON_PARSE_ERROR', 'JSON_SHAPE_ERROR'].includes(error?.code)) throw error;
+    const recoveryPath = path.join(path.dirname(source), `mai-pet-memory.unreadable-${safeFileTimestamp()}.backup.json`);
+    preserveFileAtomically(source, recoveryPath);
+    console.error(`Unreadable memory database was preserved at ${recoveryPath}:`, error);
     memoryState = normalizeMemoryState({});
+    lastSavedMemoryState = structuredClone(memoryState);
+    saveMemory();
     return;
   }
-  try {
-    const stored = JSON.parse(fs.readFileSync(source, 'utf8'));
-    const needsMomentReplyRepair = (Array.isArray(stored?.moments) ? stored.moments : [])
-      .some((moment) => (Array.isArray(moment?.comments) ? moment.comments : [])
-        .some((comment) => (
-          comment?.role === 'assistant'
-          && normalizeMomentReplyText(comment.content, 600) !== normalizeMomentText(comment.content, 600)
-        )));
-    memoryState = normalizeMemoryState(stored);
-    const needsSchemaUpgrade = Number(stored?.version || 0) < MEMORY_SCHEMA_VERSION;
-    if (needsSchemaUpgrade) {
-      backupMemoryBeforeUpgrade(Number(stored?.version || 0));
-      if (Number(stored?.version || 0) < 11) {
-        if (Number(stored?.version || 0) < 7) {
-          rebuildMemoriesFromHistory({ save: false });
-        }
-        if (Number(stored?.version || 0) < 8) {
-          rebuildSharedLifeFromHistory({ save: false });
-        }
-        rebuildLifeHubFromHistory({ save: false });
-        rebuildContinuityState();
-        memoryState.assistant = normalizeAssistantState(memoryState.assistant, { lifeItems: memoryState.lifeItems });
-      }
-    }
-    if (needsSchemaUpgrade || needsMomentReplyRepair) saveMemory();
-  } catch (error) {
-    try {
-      const recoveryPath = path.join(
-        path.dirname(source),
-        `mai-pet-memory.unreadable-${safeFileTimestamp()}.backup.json`
-      );
-      fs.copyFileSync(source, recoveryPath);
-      console.error(`Unreadable memory database was preserved at ${recoveryPath}:`, error);
-    } catch (backupError) {
-      console.error('Could not preserve the unreadable memory database:', backupError);
-    }
+
+  if (!loaded.exists) {
     memoryState = normalizeMemoryState({});
-    // The unreadable original is preserved above. Persist the normalized empty
-    // database so the next launch does not fail on the same corrupt JSON again.
-    saveMemory();
+    lastSavedMemoryState = structuredClone(memoryState);
+    return;
   }
+
+  const stored = loaded.value;
+  const needsMomentReplyRepair = (Array.isArray(stored?.moments) ? stored.moments : [])
+    .some((moment) => (Array.isArray(moment?.comments) ? moment.comments : [])
+      .some((comment) => (
+        comment?.role === 'assistant'
+        && normalizeMomentReplyText(comment.content, 600) !== normalizeMomentText(comment.content, 600)
+      )));
+  const normalized = normalizeMemoryState(stored);
+  const needsSchemaUpgrade = Number(stored?.version || 0) < MEMORY_SCHEMA_VERSION;
+  if (needsSchemaUpgrade) backupMemoryBeforeUpgrade(Number(stored?.version || 0));
+  memoryState = normalized;
+  lastSavedMemoryState = structuredClone(normalized);
+  if (needsSchemaUpgrade && Number(stored?.version || 0) < 11) {
+    if (Number(stored?.version || 0) < 7) rebuildMemoriesFromHistory({ save: false });
+    if (Number(stored?.version || 0) < 8) rebuildSharedLifeFromHistory({ save: false });
+    rebuildLifeHubFromHistory({ save: false });
+    rebuildContinuityState();
+    memoryState.assistant = normalizeAssistantState(memoryState.assistant, { lifeItems: memoryState.lifeItems });
+  }
+  if (needsSchemaUpgrade || needsMomentReplyRepair) saveMemory();
 }
 
 function backupMemoryBeforeUpgrade(version) {
-  try {
-    const source = memoryPath();
-    if (!fs.existsSync(source)) return;
-    const backup = path.join(
-      path.dirname(source),
-      `mai-pet-memory.before-v${MEMORY_SCHEMA_VERSION}-from-v${Math.max(0, version)}.backup.json`
-    );
-    if (!fs.existsSync(backup)) fs.copyFileSync(source, backup);
-  } catch (error) {
-    console.error(`Could not back up Mai memory before v${MEMORY_SCHEMA_VERSION} migration:`, error);
+  const source = memoryPath();
+  try { fs.statSync(source); } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
   }
+  const backup = path.join(
+    path.dirname(source),
+    `mai-pet-memory.before-v${MEMORY_SCHEMA_VERSION}-from-v${Math.max(0, version)}.backup.json`
+  );
+  return ensureFileBackup(source, backup);
 }
 
 function rebuildContinuityState() {
@@ -1161,12 +1347,15 @@ function synchronizeLifeHubState() {
 }
 
 function saveMemory() {
+  const rollbackState = structuredClone(lastSavedMemoryState || memoryState);
   try {
+    assertProductDataWritable();
     synchronizeLifeHubState();
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(memoryPath(), JSON.stringify(memoryState, null, 2), 'utf8');
+    persistJsonAtomic(memoryPath(), memoryState);
+    lastSavedMemoryState = structuredClone(memoryState);
   } catch (error) {
-    console.error('Could not save Mai pet memory:', error);
+    memoryState = rollbackState;
+    throw error;
   }
 }
 
@@ -1181,31 +1370,14 @@ function getDeepSeekApiKey() {
     const diagnosticKey = String(process.env.DEEPSEEK_API_KEY || '').trim();
     if (diagnosticKey) return diagnosticKey;
   }
-  const encrypted = settings.deepseek.apiKeyEncrypted;
-  if (encrypted && safeStorage.isEncryptionAvailable()) {
-    try {
-      return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
-    } catch (error) {
-      console.error('Could not decrypt DeepSeek API key:', error);
-    }
-  }
-  return settings.deepseek.apiKeyPlain || '';
+  return getStoredApiKey(settings, safeStorage, (error) => {
+    console.error('Could not decrypt DeepSeek API key:', error);
+  });
 }
 
 function setDeepSeekApiKey(apiKey) {
-  if (!apiKey) {
-    settings.deepseek.apiKeyEncrypted = '';
-    settings.deepseek.apiKeyPlain = '';
-    return;
-  }
-
-  if (safeStorage.isEncryptionAvailable()) {
-    settings.deepseek.apiKeyEncrypted = safeStorage.encryptString(apiKey).toString('base64');
-    settings.deepseek.apiKeyPlain = '';
-  } else {
-    settings.deepseek.apiKeyEncrypted = '';
-    settings.deepseek.apiKeyPlain = apiKey;
-  }
+  setStoredApiKey(settings, apiKey, safeStorage);
+  legacyPlaintextKeyNeedsSecureStorage = false;
 }
 
 function boundedInteger(value, minimum, maximum, fallback) {
@@ -1279,6 +1451,9 @@ function publicDeepSeekSettings() {
     provider: settings.model.provider,
     providers: modelGateway.providers(),
     configured: Boolean(getDeepSeekApiKey()),
+    credentialStorageWarning: legacyPlaintextKeyNeedsSecureStorage
+      ? '检测到旧版明文 API Key。系统安全存储不可用，因此已保留本机旧值并排除在所有备份和导出之外；请重新启用 Windows 安全存储后再保存 Key。'
+      : '',
     model: DEEPSEEK_MODELS.has(settings.deepseek.model)
       ? settings.deepseek.model
       : 'deepseek-v4-flash',
@@ -1704,7 +1879,7 @@ function updateAssistantSettings(input = {}) {
 }
 
 async function sampleForegroundApplication() {
-  if (settings.assistant.activityTrackingEnabled !== true || quitting) return null;
+  if (settings.assistant.activityTrackingEnabled !== true || quitting || !productDataWritesAllowed()) return null;
   const sample = await readForegroundApplication();
   if (!sample?.processName) return null;
   const normalizedName = sample.processName.toLocaleLowerCase('zh-CN').replace(/\.exe$/, '');
@@ -1724,7 +1899,7 @@ async function sampleForegroundApplication() {
 function scheduleActivityTracking() {
   clearInterval(activityTrackingTimer);
   activityTrackingTimer = null;
-  if (settings.assistant.activityTrackingEnabled !== true || quitting) return;
+  if (settings.assistant.activityTrackingEnabled !== true || quitting || !productDataWritesAllowed()) return;
   sampleForegroundApplication().catch((error) => console.error('Could not sample foreground application:', error));
   activityTrackingTimer = setInterval(() => {
     sampleForegroundApplication().catch((error) => console.error('Could not sample foreground application:', error));
@@ -1851,6 +2026,7 @@ function deleteKnowledgeLibrary(libraryId) {
 }
 
 async function refreshKnowledgeIndex() {
+  assertProductDataWritable();
   if (knowledgeRefreshPromise) return knowledgeRefreshPromise;
   knowledgeRefreshPromise = (async () => {
     let updated = 0;
@@ -1883,7 +2059,7 @@ async function refreshKnowledgeIndex() {
 function scheduleKnowledgeRefresh() {
   clearInterval(knowledgeRefreshTimer);
   knowledgeRefreshTimer = null;
-  if (settings.assistant.knowledgeAutoRefresh === false || quitting) return;
+  if (settings.assistant.knowledgeAutoRefresh === false || quitting || !productDataWritesAllowed()) return;
   knowledgeRefreshTimer = setInterval(() => {
     refreshKnowledgeIndex().catch((error) => console.error('Could not refresh knowledge index:', error));
   }, KNOWLEDGE_REFRESH_INTERVAL_MS);
@@ -2037,66 +2213,149 @@ function checkInHabit(habitId, input = {}) {
 }
 
 async function createUserBackup() {
+  assertProductDataWritable();
   const result = await dialog.showSaveDialog(chatWindow || mainWindow, {
     title: '备份 Mai Sakurajima 的全部本地数据',
     defaultPath: path.join(app.getPath('documents'), `Mai-Sakurajima-完整备份-${localDateKey(new Date())}.json`),
     filters: [{ name: 'Mai Sakurajima 备份', extensions: ['json'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
-  const bundle = createBackupBundle({ appVersion: app.getVersion(), memory: memoryState, settings, knowledge: knowledgeState });
+  assertProductDataWritable();
+  const bundle = createBackupBundle(snapshotUserDataForBackup());
   writeJsonAtomic(result.filePath, bundle);
   return { canceled: false, name: path.basename(result.filePath), path: result.filePath, size: fs.statSync(result.filePath).size };
 }
 
 async function exportUserData() {
+  assertProductDataWritable();
   const result = await dialog.showSaveDialog(chatWindow || mainWindow, {
     title: '导出不含 API Key 的个人数据',
     defaultPath: path.join(app.getPath('documents'), `Mai-Sakurajima-数据导出-${localDateKey(new Date())}.json`),
     filters: [{ name: 'JSON 数据', extensions: ['json'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
-  writeJsonAtomic(result.filePath, createPortableExport({ appVersion: app.getVersion(), memory: memoryState, settings, knowledge: knowledgeState }));
+  assertProductDataWritable();
+  writeJsonAtomic(result.filePath, createPortableExport(snapshotUserDataForBackup()));
   return { canceled: false, name: path.basename(result.filePath), path: result.filePath, size: fs.statSync(result.filePath).size };
 }
 
 async function restoreUserBackup() {
-  const result = await dialog.showOpenDialog(chatWindow || mainWindow, {
-    title: '恢复 Mai Sakurajima 完整备份',
-    properties: ['openFile'],
-    filters: [{ name: 'Mai Sakurajima 备份', extensions: ['json'] }]
-  });
+  assertProductDataWritable();
+  const smokeBackupPath = process.env.MAI_RESTORE_PROTECTION_SMOKE === '1'
+    ? String(process.env.MAI_RESTORE_PROTECTION_BACKUP || '')
+    : '';
+  const result = smokeBackupPath
+    ? { canceled: false, filePaths: [smokeBackupPath] }
+    : await dialog.showOpenDialog(chatWindow || mainWindow, {
+      title: '恢复 Mai Sakurajima 完整备份',
+      properties: ['openFile'],
+      filters: [{ name: 'Mai Sakurajima 备份', extensions: ['json'] }]
+    });
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
-  const bundle = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
-  const validation = validateBackupBundle(bundle);
-  if (!validation.ok) throw new Error(validation.errors.join('；'));
-  createAutomaticBackup('before-restore');
-  memoryState = normalizeMemoryState(bundle.payload.memory);
-  knowledgeState = normalizeKnowledgeState(bundle.payload.knowledge || knowledgeState);
-  settings = {
-    ...settings,
-    ...bundle.payload.settings,
-    deepseek: { ...settings.deepseek, ...(bundle.payload.settings.deepseek || {}) },
-    voice: { ...settings.voice, ...(bundle.payload.settings.voice || {}) },
-    assistant: { ...settings.assistant, ...(bundle.payload.settings.assistant || {}) },
-    appearance: {
-      ...settings.appearance,
-      ...(bundle.payload.settings.appearance || {}),
-      avatars: {
-        ...settings.appearance.avatars,
-        ...(bundle.payload.settings.appearance?.avatars || {})
-      }
-    },
-    model: {
-      ...settings.model,
-      ...(bundle.payload.settings.model || {}),
-      provider: PROVIDER_IDS.DEEPSEEK
+  assertProductDataWritable();
+  const loaded = readJsonFile(result.filePaths[0]);
+  if (!loaded.exists) throw new Error('所选备份文件不存在。');
+  const current = snapshotUserDataForBackup();
+  const plan = prepareBackupRestore(loaded.value, current);
+  const currentCredentialAvailable = Boolean(getDeepSeekApiKey());
+  const restoredMemory = normalizeMemoryState(plan.memory);
+  const restoredKnowledge = normalizeKnowledgeState(plan.knowledge);
+  const restoredWork = normalizeWorkState(plan.work);
+  const requestedAppearance = plan.settings.appearance || {};
+  const missingResources = [];
+  const hasWallpaper = Boolean(plan.resources?.customWallpaper);
+  if (requestedAppearance.wallpaper === CUSTOM_WALLPAPER_ID && !hasWallpaper) missingResources.push('自定义壁纸');
+  const normalizedAvatarSelections = { ...(requestedAppearance.avatars || {}) };
+  const avatarPaths = customAvatarPaths();
+  for (const target of AVATAR_TARGETS) {
+    const hasAvatar = Boolean(plan.resources?.customAvatars?.[target]);
+    if (normalizedAvatarSelections[target] === CUSTOM_AVATAR_ID && !hasAvatar) {
+      missingResources.push(target === 'mai' ? '麻衣头像' : '用户头像');
+      normalizedAvatarSelections[target] = '';
     }
+  }
+  const appearanceForNormalization = {
+    ...requestedAppearance,
+    wallpaper: requestedAppearance.wallpaper === CUSTOM_WALLPAPER_ID && !hasWallpaper
+      ? DEFAULT_WALLPAPER_ID
+      : requestedAppearance.wallpaper,
+    avatars: normalizedAvatarSelections
   };
-  settings.appearance = normalizeAppearanceSettings(settings.appearance);
-  saveKnowledge();
-  saveSettings();
-  rebuildLifeHubFromHistory({ save: false });
-  saveMemory();
+  const restoredSettings = {
+    ...plan.settings,
+    model: { ...plan.settings.model, provider: PROVIDER_IDS.DEEPSEEK },
+    appearance: normalizeAppearanceSettings(appearanceForNormalization)
+  };
+  if (requestedAppearance.wallpaper === CUSTOM_WALLPAPER_ID && hasWallpaper) {
+    restoredSettings.appearance.wallpaper = CUSTOM_WALLPAPER_ID;
+  }
+  for (const target of AVATAR_TARGETS) {
+    if (normalizedAvatarSelections[target] === CUSTOM_AVATAR_ID && plan.resources?.customAvatars?.[target]) {
+      restoredSettings.appearance.avatars[target] = CUSTOM_AVATAR_ID;
+    }
+  }
+  const priorMemoryState = memoryState;
+  try {
+    memoryState = restoredMemory;
+    rebuildLifeHubFromHistory({ save: false });
+    synchronizeLifeHubState();
+  } finally {
+    memoryState = priorMemoryState;
+  }
+
+  const jsonBytes = (value) => Buffer.from(JSON.stringify(value, null, 2), 'utf8');
+  const resources = plan.resources || {};
+  const resourceBytes = (value) => value ? Buffer.from(value.dataBase64, 'base64') : null;
+  const entries = [
+    { path: memoryPath(), data: jsonBytes(restoredMemory) },
+    { path: settingsPath(), data: jsonBytes(restoredSettings) },
+    { path: knowledgePath(), data: jsonBytes(restoredKnowledge) },
+    { path: workStore.filePath, data: jsonBytes(restoredWork) },
+    { path: customWallpaperPath(), data: resourceBytes(resources.customWallpaper) },
+    ...AVATAR_TARGETS.map((target) => ({
+      path: avatarPaths[target],
+      data: resourceBytes(resources.customAvatars?.[target])
+    }))
+  ];
+
+  // Validate and protect the complete current product snapshot before the
+  // multi-file transaction starts. A failed automatic backup aborts restore.
+  createAutomaticBackup('before-restore');
+  productDataWriteProtection.state = 'restore-in-progress';
+  let transaction;
+  try {
+    transaction = commitFileSetAtomically(app.getPath('userData'), entries, {
+      allowedTargets: [memoryPath(), settingsPath(), knowledgePath(), workStore.filePath, customWallpaperPath(), ...Object.values(avatarPaths)]
+    });
+  } catch (error) {
+    if (error?.code === 'RESTORE_ROLLBACK_FAILED') {
+      return freezeProductDataWritesAfterRollbackFailure(error);
+    }
+    productDataWriteProtection.state = 'ready';
+    throw error;
+  }
+  productDataWriteProtection.state = 'ready';
+
+  memoryState = restoredMemory;
+  settings = restoredSettings;
+  knowledgeState = restoredKnowledge;
+  workStore.adoptPersistedState(restoredWork);
+  lastSavedMemoryState = structuredClone(memoryState);
+  lastSavedSettings = structuredClone(settings);
+  lastSavedKnowledgeState = structuredClone(knowledgeState);
+  legacyPlaintextKeyNeedsSecureStorage = Boolean(
+    settings.deepseek.apiKeyPlain && !safeStorage.isEncryptionAvailable()
+  );
+  const unavailableKnowledgeSources = (Array.isArray(knowledgeState.documents) ? knowledgeState.documents : [])
+    .filter((document) => document.sourcePath)
+    .flatMap((document) => {
+      try {
+        const stat = fs.statSync(document.sourcePath);
+        return stat.isFile() ? [] : [{ title: document.title, sourcePath: document.sourcePath, status: 'not-a-file' }];
+      } catch (error) {
+        return [{ title: document.title, sourcePath: document.sourcePath, status: error?.code === 'EACCES' ? 'access-denied' : 'unavailable' }];
+      }
+    });
   scheduleProactiveGreeting(true);
   scheduleGirlfriendFollowUp();
   scheduleMomentPosting(true);
@@ -2111,7 +2370,11 @@ async function restoreUserBackup() {
     hub: broadcastLifeHubState(),
     continuity: broadcastContinuityState(),
     assistant: broadcastAssistantState(),
-    knowledge: broadcastKnowledgeState()
+    knowledge: broadcastKnowledgeState(),
+    credentialsMissing: !currentCredentialAvailable,
+    missingResources,
+    unavailableKnowledgeSources,
+    cleanupWarnings: transaction.cleanupWarnings.map((error) => String(error?.message || error))
   };
 }
 
@@ -2538,7 +2801,7 @@ function rebuildMemoriesFromHistory(options = {}) {
   const total = { messages: 0, candidates: 0, added: 0, updated: 0, skipped: 0 };
   for (const session of memoryState.sessions) {
     for (const message of Array.isArray(session.messages) ? session.messages : []) {
-      if (message?.role !== 'user') continue;
+      if (message?.role !== 'user' || message.contextSource === 'workspace') continue;
       total.messages += 1;
       const candidates = extractExplicitMemoryCandidates(message.content);
       total.candidates += candidates.length;
@@ -2570,7 +2833,7 @@ function rebuildSharedLifeFromHistory(options = {}) {
   let episodes = memoryState.episodes || [];
   for (const session of memoryState.sessions) {
     for (const message of Array.isArray(session.messages) ? session.messages : []) {
-      if (message?.role !== 'user') continue;
+      if (message?.role !== 'user' || message.contextSource === 'workspace') continue;
       total.messages += 1;
       const candidates = extractEpisodeCandidates(message.content);
       total.candidates += candidates.length;
@@ -2749,128 +3012,11 @@ function correctMemory(memoryId, action, input = {}) {
 }
 
 function applySharedLifeTurn(userText, reply, sessionId, sourceCreatedAt = new Date().toISOString(), sourceMessageId = '') {
-  const source = String(userText || '').trim().slice(0, 12000);
-  const merged = mergeEpisodes(memoryState.episodes, [
-    ...extractEpisodeCandidates(source),
-    ...(Array.isArray(reply?.episodes) ? reply.episodes : [])
-  ], {
-    sourceText: source,
-    sourceSessionId: sessionId,
-    sourceMessageId,
-    sourceCreatedAt,
-    max: MAX_EPISODES
-  });
-  memoryState.episodes = merged.episodes;
-  const topicResult = updateTopicThreads(memoryState.topicThreads, {
-    userText: source,
-    reply,
-    candidates: Array.isArray(reply?.topics) ? reply.topics : [],
-    sourceSessionId: sessionId,
-    now: new Date(sourceCreatedAt).getTime() || Date.now(),
-    max: MAX_TOPIC_THREADS
-  });
-  memoryState.topicThreads = topicResult.topics;
-  const peopleResult = mergePeople(memoryState.people, [
-    ...extractPersonCandidates(source),
-    ...(Array.isArray(reply?.people) ? reply.people : [])
-  ], {
-    sourceText: source,
-    sessionId,
-    messageId: sourceMessageId,
-    createdAt: sourceCreatedAt,
-    max: MAX_PEOPLE
-  });
-  memoryState.people = peopleResult.people;
-  const projectResult = mergeProjectCandidates(memoryState.projects, reply?.projects, {
-    sourceText: source,
-    sessionId,
-    messageId: sourceMessageId,
-    createdAt: sourceCreatedAt
-  });
-  memoryState.projects = projectResult.projects;
-  const habitResult = mergeHabitCandidates(memoryState.habits, reply?.habits, {
-    sourceText: source,
-    sessionId,
-    messageId: sourceMessageId,
-    createdAt: sourceCreatedAt
-  });
-  memoryState.habits = habitResult.habits;
-  memoryState.world = advanceWorldState(memoryState.world, Date.now());
-  return {
-    episodes: merged.stats,
-    topics: topicResult.stats,
-    people: peopleResult.stats,
-    projects: projectResult.stats,
-    habits: habitResult.stats
-  };
+  return chatTurnStateWriter.applySharedLifeTurn(userText, reply, sessionId, sourceCreatedAt, sourceMessageId);
 }
 
 function appendConversationHistory(messages, reply, sessionId) {
-  const lastUserMessage = messages.slice().reverse().find((message) => message.role === 'user');
-  const now = new Date().toISOString();
-  let userMessage = null;
-  if (lastUserMessage) {
-    const normalizedContent = String(lastUserMessage.content || '').trim().slice(0, 12000);
-    if (normalizedContent) {
-      userMessage = {
-        id: String(lastUserMessage.id || makeLocalId('message')).slice(0, 120),
-        role: 'user',
-        content: normalizedContent,
-        createdAt: now
-      };
-    }
-  }
-  const { session, storedUserMessage } = conversationState.appendConversationTurn(memoryState, {
-    sessionId,
-    userMessage,
-    assistantMessage: {
-      id: makeLocalId('message'),
-      role: 'assistant',
-      content: reply.content,
-      action: reply.action,
-      emotion: reply.emotion,
-      createdAt: now
-    },
-    updatedAt: now
-  });
-  const timestamp = Date.now();
-  beginRelationshipWaiting(memoryState, {
-    waitingSince: timestamp,
-    waitingSessionId: session.id,
-    lastUserMessageAt: timestamp,
-    lastCompanionMessageAt: timestamp,
-    followUpCount: 0
-  }, MAX_CONTACT_COUNT);
-  applyMindTurn(memoryState, {
-    userMessage: String(lastUserMessage?.content || ''),
-    reply,
-    topic: reply?.mind?.topic,
-    now: timestamp
-  });
-  if (storedUserMessage?.content) {
-    memoryState.behaviorPatterns = mergeBehaviorPatternObservations(
-      memoryState.behaviorPatterns,
-      extractBehaviorPatternCandidates(storedUserMessage.content),
-      {
-        sourceText: storedUserMessage.content,
-        sourceSessionId: session.id,
-        sourceMessageId: storedUserMessage.id,
-        observedAt: storedUserMessage.createdAt || now
-      }
-    );
-  }
-  applySharedLifeTurn(String(lastUserMessage?.content || ''), {
-    ...reply,
-    mind: {
-      ...(reply?.mind || {}),
-      topic: reply?.mind?.topic || memoryState.mind.activeTopic,
-      pendingQuestion: reply?.mind?.pendingQuestion || memoryState.mind.pendingQuestion
-    }
-  }, session.id, storedUserMessage?.createdAt || now, storedUserMessage?.id || '');
-  saveMemory();
-  broadcastSharedLifeState();
-  scheduleGirlfriendFollowUp();
-  return session;
+  return chatTurnStateWriter.appendConversationHistory(messages, reply, sessionId);
 }
 
 function appendProactiveHistory(reply, source = 'girlfriend', sessionId = memoryState.activeSessionId) {
@@ -3904,7 +4050,7 @@ async function deliverProactiveGreeting(decision = { shouldSpeak: true, reason: 
 
 function scheduleProactiveGreeting(initial = false, requestedDelayMs = 0) {
   clearTimeout(proactiveGreetingTimer);
-  if (settings.deepseek.proactiveGreetingEnabled === false || quitting) {
+  if (settings.deepseek.proactiveGreetingEnabled === false || quitting || !productDataWritesAllowed()) {
     return;
   }
 
@@ -4194,7 +4340,7 @@ async function commentOnMoment(postId, rawContent) {
 
 function scheduleMomentPosting(initial = false) {
   clearTimeout(momentPostTimer);
-  if (settings.deepseek.momentsEnabled === false || quitting) {
+  if (settings.deepseek.momentsEnabled === false || quitting || !productDataWritesAllowed()) {
     return;
   }
   if (!memoryState.momentsMeta || !Number(memoryState.momentsMeta.nextPostAt)) {
@@ -4246,7 +4392,7 @@ function quietHoursDelay(now = new Date()) {
 
 function scheduleGirlfriendFollowUp() {
   clearTimeout(girlfriendFollowUpTimer);
-  if (settings.deepseek.girlfriendModeEnabled !== true || quitting) {
+  if (settings.deepseek.girlfriendModeEnabled !== true || quitting || !productDataWritesAllowed()) {
     return;
   }
   normalizeRelationship(memoryState, MAX_CONTACT_COUNT);
@@ -4433,6 +4579,243 @@ function clampToDisplays(x, y) {
   };
 }
 
+function captureRestoreTargetBytes(filePaths) {
+  return filePaths.map((filePath) => {
+    try {
+      return { name: path.basename(filePath), base64: fs.readFileSync(filePath).toString('base64') };
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { name: path.basename(filePath), base64: null };
+      throw error;
+    }
+  });
+}
+
+function writeSmokeReport(outputPath, report) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, JSON.stringify(report, null, 2), 'utf8');
+}
+
+async function runRestoreProtectionSmoke(outputPath) {
+  const assert = require('node:assert/strict');
+  let report = { ok: false };
+  const originalRenameSync = fs.renameSync;
+  const originalUnlinkSync = fs.unlinkSync;
+  const originalShowOpenDialog = dialog.showOpenDialog;
+  const targetPaths = [
+    memoryPath(), settingsPath(), knowledgePath(), workStore.filePath,
+    customWallpaperPath(), ...Object.values(customAvatarPaths())
+  ];
+  const testBackupPath = String(process.env.MAI_RESTORE_PROTECTION_BACKUP || '');
+  let smokeStage = 'seed-user-data';
+  let commitFailures = 0;
+  let rollbackFailureEnabled = false;
+  let rollbackFailureInjected = false;
+  let pendingAssetDialogResolve = null;
+
+  try {
+    assert.equal(productDataWriteProtection.state, 'ready');
+    saveMemory();
+    saveSettings();
+    saveKnowledge();
+    workStore.save();
+    assert.equal(fs.existsSync(customWallpaperPath()), false, 'smoke expects an isolated userData directory');
+    assert.equal(fs.existsSync(customAvatarPaths().mai), false, 'smoke expects an isolated userData directory');
+    assert.equal(fs.existsSync(customAvatarPaths().user), false, 'smoke expects an isolated userData directory');
+
+    const imageFixturePath = path.join(app.getPath('userData'), 'restore-protection-smoke-input.png');
+    fs.copyFileSync(path.join(__dirname, 'assets', 'mai-icon.png'), imageFixturePath);
+    const fixtureImageBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const fixtureResource = { mimeType: 'image/jpeg', dataBase64: fixtureImageBytes.toString('base64') };
+    const backupSnapshot = snapshotUserDataForBackup();
+    backupSnapshot.resources = {
+      customWallpaper: fixtureResource,
+      customAvatars: { mai: fixtureResource, user: fixtureResource }
+    };
+    fs.mkdirSync(path.dirname(testBackupPath), { recursive: true });
+    fs.writeFileSync(testBackupPath, JSON.stringify(createBackupBundle(backupSnapshot), null, 2), 'utf8');
+
+    smokeStage = 'install-fault-injection-and-open-chat';
+    const targetWallpaper = path.resolve(customWallpaperPath());
+    const targetAvatarUser = path.resolve(customAvatarPaths().user);
+    fs.renameSync = (source, target, ...args) => {
+      if (path.resolve(target) === targetAvatarUser && String(source).includes('restore-new-') && commitFailures < 2) {
+        commitFailures += 1;
+        throw Object.assign(new Error('Smoke-injected mid-commit replacement failure.'), { code: 'EPERM' });
+      }
+      return originalRenameSync.call(fs, source, target, ...args);
+    };
+    fs.unlinkSync = (target, ...args) => {
+      if (rollbackFailureEnabled && path.resolve(target) === targetWallpaper) {
+        rollbackFailureInjected = true;
+        throw Object.assign(new Error('Smoke-injected rollback deletion failure.'), { code: 'EACCES' });
+      }
+      return originalUnlinkSync.call(fs, target, ...args);
+    };
+
+    openChat();
+    const contents = chatWindow?.webContents;
+    assert.ok(contents, 'Chat window should be created for the restore UI smoke.');
+    if (contents.isLoadingMainFrame()) {
+      await Promise.race([
+        new Promise((resolve, reject) => {
+          const onFinish = () => { contents.removeListener('did-fail-load', onFail); resolve(); };
+          const onFail = (_event, code, description) => {
+            contents.removeListener('did-finish-load', onFinish);
+            reject(new Error(`Chat load failed (${code}): ${description}`));
+          };
+          contents.once('did-finish-load', onFinish);
+          contents.once('did-fail-load', onFail);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Restore protection UI smoke timed out while loading Chat.')), 15000))
+      ]);
+    }
+    await contents.executeJavaScript(`void (window.confirm = () => true);`);
+    const clickRestoreAndWaitFor = async (needle) => {
+      await contents.executeJavaScript(`document.getElementById('restore-backup').click()`);
+      const encodedNeedle = JSON.stringify(needle);
+      return contents.executeJavaScript(`new Promise((resolve, reject) => {
+        const needle = ${encodedNeedle};
+        const startedAt = Date.now();
+        const check = () => {
+          const text = document.getElementById('notice')?.textContent || '';
+          if (text.includes(needle)) resolve(text);
+          else if (Date.now() - startedAt > 10000) reject(new Error('Restore UI did not show the expected notice.'));
+          else setTimeout(check, 40);
+        };
+        check();
+      })`);
+    };
+
+    smokeStage = 'ordinary-rollback-through-chat-ui';
+    const ordinaryFailureNotice = await clickRestoreAndWaitFor('Smoke-injected mid-commit replacement failure.');
+    assert.equal(commitFailures, 1);
+    assert.equal(productDataWriteProtection.state, 'ready', 'a successful rollback must not freeze Main writes');
+    assert.ok(ordinaryFailureNotice.includes('Smoke-injected mid-commit replacement failure.'));
+    const ordinaryRollbackStayedWritable = true;
+    saveMemory();
+    saveSettings();
+    saveKnowledge();
+    const ordinaryRollbackWorkProject = workStore.createProject({ name: '普通回滚后仍可写入' });
+    assert.ok(ordinaryRollbackWorkProject.id);
+
+    const baselineBeforeProtectedFailure = captureRestoreTargetBytes(targetPaths);
+    smokeStage = 'start-pending-resource-import';
+    dialog.showOpenDialog = () => new Promise((resolve) => { pendingAssetDialogResolve = resolve; });
+    const pendingAssetWrite = importCustomAvatar(chatWindow, 'mai');
+    assert.equal(typeof pendingAssetDialogResolve, 'function');
+    rollbackFailureEnabled = true;
+    smokeStage = 'rollback-failure-through-chat-ui';
+    const protectionNotice = await clickRestoreAndWaitFor('已暂停所有本地数据写入');
+    assert.ok(protectionNotice.includes('请关闭并重新启动 Mai'));
+    assert.ok(!protectionNotice.includes('完整备份已恢复'));
+    assert.equal(commitFailures, 2);
+    assert.equal(rollbackFailureInjected, true);
+    assert.equal(productDataWriteProtection.state, 'restore-rollback-failed');
+    const bytesAtFreeze = captureRestoreTargetBytes(targetPaths);
+
+    pendingAssetDialogResolve({ canceled: false, filePaths: [imageFixturePath] });
+    smokeStage = 'verify-frozen-main-writers';
+    await assert.rejects(pendingAssetWrite, { code: 'PRODUCT_DATA_WRITE_PROTECTED' });
+
+    const blockedErrors = {};
+    for (const [name, action] of Object.entries({
+      memory: () => saveMemory(),
+      settings: () => saveSettings(),
+      knowledge: () => saveKnowledge(),
+      work: () => workStore.createProject({ name: '冻结后不得写入' }),
+      resourceWrite: () => writeCustomResource(customWallpaperPath(), fixtureImageBytes),
+      resourceDelete: () => deleteCustomResource(customWallpaperPath()),
+      automaticBackup: () => createAutomaticBackup('restore-protection-smoke')
+    })) {
+      try { action(); } catch (error) { blockedErrors[name] = String(error?.code || ''); }
+    }
+    await assert.rejects(refreshKnowledgeIndex(), { code: 'PRODUCT_DATA_WRITE_PROTECTED' });
+    scheduleActivityTracking();
+    scheduleKnowledgeRefresh();
+    scheduleProactiveGreeting();
+    scheduleGirlfriendFollowUp();
+    scheduleMomentPosting();
+    const backgroundSchedulersStopped = [
+      activityTrackingTimer, knowledgeRefreshTimer, proactiveGreetingTimer,
+      girlfriendFollowUpTimer, momentPostTimer
+    ].every((timer) => timer === null);
+    assert.equal(backgroundSchedulersStopped, true);
+    const exitSave = saveProductDataOnShutdown();
+    assert.equal(exitSave.memorySaved, false);
+    assert.equal(exitSave.knowledgeSaved, false);
+    assert.equal(exitSave.memoryError, 'PRODUCT_DATA_WRITE_PROTECTED');
+    assert.equal(exitSave.knowledgeError, 'PRODUCT_DATA_WRITE_PROTECTED');
+    assert.deepEqual(blockedErrors, {
+      memory: 'PRODUCT_DATA_WRITE_PROTECTED',
+      settings: 'PRODUCT_DATA_WRITE_PROTECTED',
+      knowledge: 'PRODUCT_DATA_WRITE_PROTECTED',
+      work: 'PRODUCT_DATA_WRITE_PROTECTED',
+      resourceWrite: 'PRODUCT_DATA_WRITE_PROTECTED',
+      resourceDelete: 'PRODUCT_DATA_WRITE_PROTECTED',
+      automaticBackup: 'PRODUCT_DATA_WRITE_PROTECTED'
+    });
+
+    const bytesBeforeQuitEvent = captureRestoreTargetBytes(targetPaths);
+    app.emit('before-quit', { preventDefault() {} });
+    const bytesAfterQuitEvent = captureRestoreTargetBytes(targetPaths);
+    assert.deepEqual(bytesAfterQuitEvent, bytesBeforeQuitEvent);
+    const afterBlockedWrites = captureRestoreTargetBytes(targetPaths);
+    const journalPath = path.join(app.getPath('userData'), 'mai-restore-transaction.json');
+    const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+    const originalsRetained = journal.entries
+      .filter((entry) => entry.existed)
+      .every((entry) => fs.existsSync(path.join(app.getPath('userData'), entry.backup)));
+    assert.deepEqual(afterBlockedWrites, bytesAtFreeze);
+    assert.equal(originalsRetained, true);
+    report = {
+      ok: true,
+      gateState: productDataWriteProtection.state,
+      ordinaryRollbackStayedWritable,
+      blockedErrors,
+      pendingAssetWriteBlocked: true,
+      backgroundRefreshBlocked: true,
+      backgroundSchedulersStopped,
+      shutdownSaveBlocked: true,
+      actualBeforeQuitBlocked: true,
+      targetBytesStableAfterBlockedWrites: true,
+      journalAndOriginalsRetained: originalsRetained && journal.phase === 'committing',
+      userNotice: protectionNotice,
+      baselineBeforeProtectedFailure,
+      bytesAtFreeze,
+      afterBlockedWrites
+    };
+  } catch (error) {
+    report = { ok: false, stage: smokeStage, error: error?.stack || error?.message || String(error) };
+  } finally {
+    fs.renameSync = originalRenameSync;
+    fs.unlinkSync = originalUnlinkSync;
+    dialog.showOpenDialog = originalShowOpenDialog;
+    try { writeSmokeReport(outputPath, report); } catch (error) {
+      report = { ok: false, error: `Could not write protection smoke report: ${error?.message || error}` };
+    }
+    if (chatWindow && !chatWindow.isDestroyed()) chatWindow.destroy();
+    chatWindow = null;
+    app.exit(report.ok ? 0 : 1);
+  }
+}
+
+function runRestoreRecoveryStartupSmoke(outputPath) {
+  const report = {
+    ok: productDataWriteProtection.state === 'ready'
+      && startupFileSetRecovery?.recovered === true
+      && !fs.existsSync(path.join(app.getPath('userData'), 'mai-restore-transaction.json')),
+    gateState: productDataWriteProtection.state,
+    recovery: startupFileSetRecovery,
+    journalRemaining: fs.existsSync(path.join(app.getPath('userData'), 'mai-restore-transaction.json'))
+  };
+  try { writeSmokeReport(outputPath, report); } catch (error) {
+    console.error('Could not write restore recovery smoke report:', error);
+    app.exit(1);
+    return;
+  }
+  app.exit(report.ok ? 0 : 1);
+}
+
 async function runUiSmoke(outputPath) {
   let result = null;
   try {
@@ -4473,6 +4856,59 @@ async function runUiSmoke(outputPath) {
       };
       wait();
     })`);
+
+    let settingsSaveError = null;
+    if (process.env.MAI_UI_SAVE_ERROR_SMOKE === '1') {
+      const settingsBytesBeforeFailure = fs.readFileSync(settingsPath());
+      const settingsModelBeforeFailure = settings.deepseek.model;
+      const originalRenameSync = fs.renameSync;
+      fs.renameSync = (source, target, ...args) => {
+        if (path.resolve(target) === path.resolve(settingsPath())) {
+          throw Object.assign(new Error('Smoke-injected settings replacement failure.'), { code: 'EACCES' });
+        }
+        return originalRenameSync.call(fs, source, target, ...args);
+      };
+      try {
+        settingsSaveError = await contents.executeJavaScript(`new Promise((resolve, reject) => {
+          const startedAt = Date.now();
+          document.getElementById('settings-button').click();
+          setTimeout(() => {
+            const model = document.getElementById('model');
+            const alternative = Array.from(model.options).find((option) => option.value && option.value !== model.value);
+            if (!alternative) {
+              reject(new Error('Settings smoke could not find an alternate model option.'));
+              return;
+            }
+            model.value = alternative.value;
+            document.getElementById('save-settings').click();
+          }, 100);
+          const wait = () => {
+            const status = document.getElementById('settings-status');
+            if (status?.classList.contains('settings-status--error')) {
+              resolve({ message: status.textContent, errorStyle: true });
+            } else if (Date.now() - startedAt > 8000) {
+              reject(new Error('Settings save failure was not shown in the settings UI.'));
+            } else setTimeout(wait, 50);
+          };
+          wait();
+        })`);
+        if (!settingsSaveError.message.includes('Smoke-injected settings replacement failure.')) {
+          throw new Error(`Settings UI showed an unexpected failure: ${settingsSaveError.message}`);
+        }
+        settingsSaveError.persistedBytesUnchanged = fs.readFileSync(settingsPath()).equals(settingsBytesBeforeFailure);
+        if (!settingsSaveError.persistedBytesUnchanged) {
+          throw new Error('Settings bytes changed even though the UI showed a failed save.');
+        }
+        const currentConfig = await contents.executeJavaScript('window.maiPet.getChatConfig()');
+        settingsSaveError.settingsStateRolledBack = currentConfig.model === settingsModelBeforeFailure;
+        if (!settingsSaveError.settingsStateRolledBack) {
+          throw new Error('Settings in-memory state changed even though the UI showed a failed save.');
+        }
+        await contents.executeJavaScript("document.getElementById('close-settings').click()");
+      } finally {
+        fs.renameSync = originalRenameSync;
+      }
+    }
 
     const avatarSmoke = await contents.executeJavaScript(`(() => {
       const exercise = (target) => {
@@ -4714,6 +5150,7 @@ async function runUiSmoke(outputPath) {
       version: app.getVersion(),
       product: 'Mai desktop companion',
       chat,
+      settingsSaveError,
       companionInspector,
       actionWorkspace,
       workInspector: { narrow: workInspectorNarrow, wide: workInspectorWide }
@@ -5008,21 +5445,21 @@ const automaticBackupService = createAutomaticBackupService({
   fs,
   path,
   createBackupBundle,
-  getBackupSnapshot: () => ({
-    appVersion: app.getVersion(),
-    memory: memoryState,
-    settings,
-    knowledge: knowledgeState
-  }),
-  maxAutomaticBackups: MAX_AUTOMATIC_BACKUPS
+  getBackupSnapshot: snapshotUserDataForBackup
 });
 const {
   safeFileTimestamp,
   writeJsonAtomic,
-  listAutomaticBackups,
-  createAutomaticBackup,
-  ensureDailyAutomaticBackup
+  listAutomaticBackups
 } = automaticBackupService;
+function createAutomaticBackup(reason = 'automatic') {
+  assertProductDataWritable();
+  return automaticBackupService.createAutomaticBackup(reason);
+}
+function ensureDailyAutomaticBackup() {
+  assertProductDataWritable();
+  return automaticBackupService.ensureDailyAutomaticBackup();
+}
 function registerIpc() {
   chatRequestService = new ChatRequestService({
     modelGateway,
@@ -5051,6 +5488,7 @@ function registerIpc() {
     requestReply: requestDeepSeek,
     noteUserReply,
     appendConversationHistory,
+    applyReplyState: chatTurnStateWriter.applyReplyState,
     mergeCommitments,
     extractExplicitMemories: extractExplicitMemoryCandidates,
     mergeCandidateMemories,
@@ -5175,6 +5613,7 @@ function registerIpc() {
   ipcMain.handle('chat:choose-custom-wallpaper', async () => {
     const imported = await importCustomWallpaper(chatWindow || mainWindow);
     if (imported) {
+      assertProductDataWritable();
       settings.appearance.wallpaper = CUSTOM_WALLPAPER_ID;
       saveSettings();
     }
@@ -5182,7 +5621,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('chat:clear-custom-wallpaper', async () => {
-    try { await fs.promises.unlink(customWallpaperPath()); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    deleteCustomResource(customWallpaperPath());
     settings.appearance.wallpaper = DEFAULT_WALLPAPER_ID;
     saveSettings();
     return publicDeepSeekSettings();
@@ -5201,6 +5640,7 @@ function registerIpc() {
     const normalizedTarget = requireAvatarTarget(target);
     const imported = await importCustomAvatar(chatWindow || mainWindow, normalizedTarget);
     if (imported) {
+      assertProductDataWritable();
       settings.appearance.avatars = {
         ...normalizeAvatarSelections(settings.appearance.avatars, customAvatarPaths()),
         [normalizedTarget]: CUSTOM_AVATAR_ID
@@ -5212,7 +5652,7 @@ function registerIpc() {
 
   ipcMain.handle('chat:clear-custom-avatar', async (_event, target) => {
     const normalizedTarget = requireAvatarTarget(target);
-    try { await fs.promises.unlink(customAvatarPaths()[normalizedTarget]); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    deleteCustomResource(customAvatarPaths()[normalizedTarget]);
     settings.appearance.avatars = {
       ...normalizeAvatarSelections(settings.appearance.avatars, customAvatarPaths()),
       [normalizedTarget]: ''
@@ -5223,6 +5663,7 @@ function registerIpc() {
 
   ipcMain.handle('chat:save-config', (_event, input) => {
     const apiKey = typeof input?.apiKey === 'string' ? input.apiKey.trim() : '';
+    const nextSettings = structuredClone(settings);
     const provider = modelProviders.get(input?.provider) || modelProviders.require(PROVIDER_IDS.DEEPSEEK);
     if (provider.metadata?.().available === false) {
       const error = new Error(provider.metadata().reason || '所选模型来源当前不可用。');
@@ -5239,83 +5680,91 @@ function registerIpc() {
       if (apiKey.length > 512) {
         throw new Error('API Key 长度不正确。');
       }
-      setDeepSeekApiKey(apiKey);
+      setStoredApiKey(nextSettings, apiKey, safeStorage);
     }
-    settings.model.provider = provider.id;
-    settings.deepseek.model = model;
-    settings.deepseek.personality = personality;
-    settings.deepseek.customPrompt = customPrompt;
+    nextSettings.model.provider = provider.id;
+    nextSettings.deepseek.model = model;
+    nextSettings.deepseek.personality = personality;
+    nextSettings.deepseek.customPrompt = customPrompt;
     if (input?.appearance && typeof input.appearance === 'object') {
-      settings.appearance = normalizeAppearanceSettings({ ...settings.appearance, ...input.appearance });
+      nextSettings.appearance = normalizeAppearanceSettings({ ...nextSettings.appearance, ...input.appearance });
     }
     if (typeof input?.memoryEnabled === 'boolean') {
-      settings.deepseek.memoryEnabled = input.memoryEnabled;
+      nextSettings.deepseek.memoryEnabled = input.memoryEnabled;
     }
     if (typeof input?.proactiveGreetingEnabled === 'boolean') {
-      settings.deepseek.proactiveGreetingEnabled = input.proactiveGreetingEnabled;
+      nextSettings.deepseek.proactiveGreetingEnabled = input.proactiveGreetingEnabled;
     }
-    settings.deepseek.proactiveIntervalMinutes = requiredIntegerSetting(
+    nextSettings.deepseek.proactiveIntervalMinutes = requiredIntegerSetting(
       input?.proactiveIntervalMinutes,
       MIN_CONTACT_INTERVAL_MINUTES,
       MAX_CONTACT_INTERVAL_MINUTES,
       '主动聊天间隔'
     );
-    settings.deepseek.proactiveDailyLimit = requiredIntegerSetting(
+    nextSettings.deepseek.proactiveDailyLimit = requiredIntegerSetting(
       input?.proactiveDailyLimit,
       MIN_CONTACT_COUNT,
       MAX_CONTACT_COUNT,
       '主动聊天每日次数'
     );
     if (typeof input?.girlfriendModeEnabled === 'boolean') {
-      settings.deepseek.girlfriendModeEnabled = input.girlfriendModeEnabled;
+      nextSettings.deepseek.girlfriendModeEnabled = input.girlfriendModeEnabled;
     }
     if (typeof input?.momentsEnabled === 'boolean') {
-      settings.deepseek.momentsEnabled = input.momentsEnabled;
+      nextSettings.deepseek.momentsEnabled = input.momentsEnabled;
     }
     if (input?.voice && typeof input.voice === 'object') {
       if (typeof input.voice.autoReadReplies === 'boolean') {
-        settings.voice.autoReadReplies = input.voice.autoReadReplies;
+        nextSettings.voice.autoReadReplies = input.voice.autoReadReplies;
       }
-      settings.voice.engine = input.voice.engine === 'system' ? 'system' : 'local';
-      const culture = String(input.voice.culture || settings.voice.culture || 'zh-CN').trim();
-      settings.voice.culture = /^[a-z]{2,3}-[a-z]{2,4}$/i.test(culture) ? culture : 'zh-CN';
-      settings.voice.voiceName = String(input.voice.voiceName || '').trim().slice(0, 160);
-      settings.voice.rate = boundedNumber(input.voice.rate, 0.7, 1.4, 1);
-      settings.voice.pitch = boundedNumber(input.voice.pitch, 0.7, 1.3, 1);
-      settings.voice.volume = boundedNumber(input.voice.volume, 0.1, 1, 1);
+      nextSettings.voice.engine = input.voice.engine === 'system' ? 'system' : 'local';
+      const culture = String(input.voice.culture || nextSettings.voice.culture || 'zh-CN').trim();
+      nextSettings.voice.culture = /^[a-z]{2,3}-[a-z]{2,4}$/i.test(culture) ? culture : 'zh-CN';
+      nextSettings.voice.voiceName = String(input.voice.voiceName || '').trim().slice(0, 160);
+      nextSettings.voice.rate = boundedNumber(input.voice.rate, 0.7, 1.4, 1);
+      nextSettings.voice.pitch = boundedNumber(input.voice.pitch, 0.7, 1.3, 1);
+      nextSettings.voice.volume = boundedNumber(input.voice.volume, 0.1, 1, 1);
     }
-    settings.deepseek.girlfriendIntervalMinutes = requiredIntegerSetting(
+    nextSettings.deepseek.girlfriendIntervalMinutes = requiredIntegerSetting(
       input?.girlfriendIntervalMinutes,
       MIN_CONTACT_INTERVAL_MINUTES,
       MAX_CONTACT_INTERVAL_MINUTES,
       '女友消息间隔'
     );
-    settings.deepseek.girlfriendMaxFollowUps = requiredIntegerSetting(
+    nextSettings.deepseek.girlfriendMaxFollowUps = requiredIntegerSetting(
       input?.girlfriendMaxFollowUps,
       MIN_CONTACT_COUNT,
       MAX_CONTACT_COUNT,
       '女友消息每轮次数'
     );
-    const previousWeatherCity = String(settings.deepseek.weatherCity || '').trim();
+    const previousWeatherCity = String(nextSettings.deepseek.weatherCity || '').trim();
     const weatherCity = typeof input?.weatherCity === 'string'
       ? input.weatherCity.trim().slice(0, 80)
       : previousWeatherCity;
     if (typeof input?.weatherEnabled === 'boolean') {
-      settings.deepseek.weatherEnabled = input.weatherEnabled;
+      nextSettings.deepseek.weatherEnabled = input.weatherEnabled;
     }
-    if (settings.deepseek.weatherEnabled === true && !weatherCity) {
+    if (nextSettings.deepseek.weatherEnabled === true && !weatherCity) {
       throw new Error('开启天气后，请填写城市名称。');
     }
-    settings.deepseek.weatherCity = weatherCity;
+    nextSettings.deepseek.weatherCity = weatherCity;
     if (weatherCity.toLocaleLowerCase('zh-CN') !== previousWeatherCity.toLocaleLowerCase('zh-CN')) {
       memoryState.reality.weather = null;
       saveMemory();
     }
-    if (settings.deepseek.girlfriendModeEnabled !== true) {
+    if (nextSettings.deepseek.girlfriendModeEnabled !== true) {
       resetRelationshipWaiting();
       saveMemory();
     }
-    saveSettings();
+    const previousStorageWarning = legacyPlaintextKeyNeedsSecureStorage;
+    settings = nextSettings;
+    if (apiKey) legacyPlaintextKeyNeedsSecureStorage = false;
+    try {
+      saveSettings();
+    } catch (error) {
+      legacyPlaintextKeyNeedsSecureStorage = previousStorageWarning;
+      throw error;
+    }
     scheduleProactiveGreeting(true);
     scheduleGirlfriendFollowUp();
     scheduleMomentPosting(true);
@@ -5324,8 +5773,14 @@ function registerIpc() {
   });
 
   ipcMain.handle('chat:clear-api-key', () => {
+    const previousStorageWarning = legacyPlaintextKeyNeedsSecureStorage;
     setDeepSeekApiKey('');
-    saveSettings();
+    try {
+      saveSettings();
+    } catch (error) {
+      legacyPlaintextKeyNeedsSecureStorage = previousStorageWarning;
+      throw error;
+    }
     return publicDeepSeekSettings();
   });
 
@@ -5774,6 +6229,8 @@ function createLlmDiagnostic(requestPurpose, caller) {
 
 const automatedSmokeMode = process.env.MAI_MIGRATION_SMOKE === '1'
   || process.env.MAI_UI_SMOKE === '1'
+  || process.env.MAI_RESTORE_PROTECTION_SMOKE === '1'
+  || process.env.MAI_RESTORE_RECOVERY_SMOKE === '1'
   || process.env.MAI_CLOSE_CHAT_SMOKE === '1'
   || process.env.MAI_P0_CHAT_SMOKE === '1'
   || process.env.MAI_DEEPSEEK_INCREMENTAL_SMOKE === '1'
@@ -5790,11 +6247,21 @@ if (!gotLock) {
     smokeDiagnostics?.checkpoint('app_ready');
     app.setAppUserModelId('com.mai.sakurajima.desktop');
     Menu.setApplicationMenu(null);
+    startupFileSetRecovery = recoverInterruptedFileSetTransaction(app.getPath('userData'), {
+      allowedTargets: [memoryPath(), settingsPath(), knowledgePath(), workStore.filePath, customWallpaperPath(), ...Object.values(customAvatarPaths())]
+    });
+    markProductDataRecoveryComplete();
     loadSettings();
     migrateLegacyAgentWorkspace();
     loadMemory();
     loadKnowledge();
-    ensureDailyAutomaticBackup();
+    dataStoresReadyForShutdown = true;
+    try {
+      ensureDailyAutomaticBackup();
+    } catch (error) {
+      console.error('Could not create the daily Mai backup:', error);
+      dialog.showErrorBox('自动备份失败', `本次未能创建自动备份，现有数据未被覆盖。\n\n${String(error?.message || error)}`);
+    }
     if (process.env.MAI_DEEPSEEK_SESSION_MESSAGE_BISECT === '1') {
       runDeepSeekSessionMessageBisect()
         .then(() => app.exit(0))
@@ -5829,6 +6296,14 @@ if (!gotLock) {
     applyLoginSetting(settings.openAtLogin);
     registerIpc();
     smokeDiagnostics?.checkpoint('services_initialized');
+    if (process.env.MAI_RESTORE_PROTECTION_SMOKE === '1' && process.env.MAI_RESTORE_PROTECTION_OUTPUT) {
+      runRestoreProtectionSmoke(process.env.MAI_RESTORE_PROTECTION_OUTPUT);
+      return;
+    }
+    if (process.env.MAI_RESTORE_RECOVERY_SMOKE === '1' && process.env.MAI_RESTORE_RECOVERY_OUTPUT) {
+      runRestoreRecoveryStartupSmoke(process.env.MAI_RESTORE_RECOVERY_OUTPUT);
+      return;
+    }
     if (process.env.MAI_P0_CHAT_SMOKE === '1' && process.env.MAI_P0_CHAT_SMOKE_OUTPUT) {
       runP0ChatFlowSmoke(process.env.MAI_P0_CHAT_SMOKE_OUTPUT);
       return;
@@ -5849,6 +6324,31 @@ if (!gotLock) {
     scheduleReminder();
     scheduleActivityTracking();
     scheduleKnowledgeRefresh();
+  }).catch((error) => {
+    dataStoresReadyForShutdown = false;
+    console.error('Mai could not safely initialize local data:', error);
+    if (process.env.MAI_MIGRATION_BACKUP_FAILURE_SMOKE === '1'
+      || process.env.MAI_RESTORE_RECOVERY_SMOKE === '1') {
+      const outputPath = String(process.env.MAI_MIGRATION_BACKUP_FAILURE_OUTPUT
+        || process.env.MAI_RESTORE_RECOVERY_OUTPUT || '');
+      if (outputPath) {
+        try {
+          fs.writeFileSync(outputPath, JSON.stringify({ ok: false, errorCode: String(error?.code || '') }), 'utf8');
+        } catch (writeError) {
+          console.error('Could not write migration failure smoke result:', writeError);
+        }
+      }
+      app.quit();
+      return;
+    }
+    if (error?.code === 'RESTORE_ROLLBACK_FAILED') {
+      const journal = error.recoveryJournalPath || path.join(app.getPath('userData'), 'mai-restore-transaction.json');
+      dialog.showErrorBox('恢复事务未能完成', `Mai 已停止启动，产品数据没有继续加载或写入。请勿删除或移动事务日志、原始副本及当前文件。关闭后重新启动可再次尝试恢复；若仍失败，请保留数据目录并联系支持。\n\n事务日志：${journal}\n\n${String(error?.message || error)}`);
+      app.quit();
+      return;
+    }
+    dialog.showErrorBox('Mai 本地数据未能安全加载', `为保护原始数据，Mai 已停止启动，没有写回空状态。\n\n${String(error?.message || error)}`);
+    app.quit();
   });
 
   app.on('activate', () => showPet('hello'));
@@ -5862,8 +6362,7 @@ if (!gotLock) {
     petVisibility.dispose();
     clearInterval(activityTrackingTimer);
     clearInterval(knowledgeRefreshTimer);
-    saveMemory();
-    saveKnowledge();
+    saveProductDataOnShutdown();
     voiceService.dispose();
     localTtsService.dispose();
   });

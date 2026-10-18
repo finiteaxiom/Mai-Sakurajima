@@ -1,12 +1,16 @@
+'use strict';
+
+const { writeJsonAtomic: persistJsonAtomic } = require('./json-persistence');
+
 function createAutomaticBackupService({
   app,
   fs,
   path,
   createBackupBundle,
   getBackupSnapshot,
-  maxAutomaticBackups,
   now = () => Date.now()
 }) {
+  let collisionSequence = 0;
   function backupDirectory() {
     return path.join(app.getPath('userData'), 'backups');
   }
@@ -16,18 +20,17 @@ function createAutomaticBackupService({
   }
 
   function writeJsonAtomic(filePath, value) {
-    const target = path.resolve(filePath);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const temporary = `${target}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(value, null, 2), 'utf8');
-    fs.copyFileSync(temporary, target);
-    fs.unlinkSync(temporary);
+    return persistJsonAtomic(filePath, value, { fs, path });
   }
 
   function listAutomaticBackups() {
     const directory = backupDirectory();
-    if (!fs.existsSync(directory)) return [];
-    return fs.readdirSync(directory)
+    let names;
+    try { names = fs.readdirSync(directory); } catch (error) {
+      if (error?.code === 'ENOENT') return [];
+      throw error;
+    }
+    return names
       .filter((name) => /^mai-backup-.*\.json$/i.test(name))
       .map((name) => {
         const filePath = path.join(directory, name);
@@ -39,14 +42,13 @@ function createAutomaticBackupService({
 
   function createAutomaticBackup(reason = 'automatic') {
     const cleanReason = String(reason || 'automatic').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 32) || 'automatic';
-    const filePath = path.join(backupDirectory(), `mai-backup-${safeFileTimestamp()}-${cleanReason}.json`);
-    writeJsonAtomic(filePath, createBackupBundle(getBackupSnapshot()));
-    const backups = listAutomaticBackups();
-    for (const item of backups.slice(maxAutomaticBackups)) {
-      if (path.dirname(path.resolve(item.path)) === path.resolve(backupDirectory())) {
-        fs.unlinkSync(item.path);
-      }
+    const baseName = `mai-backup-${safeFileTimestamp()}-${cleanReason}`;
+    let filePath = path.join(backupDirectory(), `${baseName}.json`);
+    while (fs.existsSync(filePath)) {
+      collisionSequence += 1;
+      filePath = path.join(backupDirectory(), `${baseName}-${collisionSequence}.json`);
     }
+    writeJsonAtomic(filePath, createBackupBundle(getBackupSnapshot()));
     return { name: path.basename(filePath), path: filePath, size: fs.statSync(filePath).size };
   }
 

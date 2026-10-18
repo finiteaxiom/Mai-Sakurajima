@@ -19,11 +19,11 @@
 mai-pet-memory.before-v16-from-v<旧版本>.backup.json
 ```
 
-之后写出 v16。该备份文件若已经存在，不会在重复启动时被覆盖或重复创建。旧版本低于历史阈值时，当前兼容路径会按需要重建早期 facts、shared life、life hub 与 continuity 派生数据；这不是每次启动都会运行的操作。
+之后写出 v16。该备份文件若已经存在且字节与源文件一致，不会在重复启动时被覆盖；若同名备份与源数据不同，或无法创建/验证备份，升级会失败并保留原始 Memory 文件。旧版本低于历史阈值时，当前兼容路径会按需要重建早期 facts、shared life、life hub 与 continuity 派生数据；这不是每次启动都会运行的操作。
 
 规范化是增量兼容：保留 sessions、facts、history、memoryCorrections、episodes、topicThreads、timeline、people、projects、habits、lifeItems、moments、`legacyAgentArchive` 和未知顶层字段；不会通过清空数据库重建用户数据。canonical key 冲突会保留原 fact id，只把非优先版本标记为 historical。
 
-无法解析的 JSON 会先复制为 `mai-pet-memory.unreadable-*.backup.json`，然后恢复能启动的规范状态。
+无法解析的 Memory JSON 会先按原始字节保存为 `mai-pet-memory.unreadable-*.backup.json`，之后才恢复规范空状态；Settings、Knowledge 和 Work 的损坏数据也遵循先保护原文、后恢复的顺序。保护或安全写回失败时，Mai 会中止本次启动，不会把源文件当成空数据覆盖。
 
 ## 历史演进
 
@@ -36,6 +36,6 @@ mai-pet-memory.before-v16-from-v<旧版本>.backup.json
 
 ## 备份、恢复与回滚
 
-升级前，建议手动复制整个 `%APPDATA%\\Mai Sakurajima`。Mai 也会创建自动备份和升级前备份；恢复路径会校验备份结构后再写入当前本地数据。
+升级前，建议手动复制整个 `%APPDATA%\\Mai Sakurajima`。Mai 也会创建自动备份和升级前备份；v2 完整备份包括 Memory、Settings（不含 API Key）、Knowledge 索引、Work 项目/记录和自定义图片资源，Knowledge 外部源文件只保留路径引用。恢复会校验备份结构和校验值、先创建恢复前备份，再以可回滚事务提交多个数据文件。旧 v1 备份仍可读，缺少 Work 或资源字段时保留本机当前数据。恢复忽略备份内凭据并保留本机当前 API Key。
 
 旧程序可能不认识 v16 新字段。若要回到旧版，请使用升级前备份或先复制整个数据目录；不要让不同版本同时写同一个 userData 目录。

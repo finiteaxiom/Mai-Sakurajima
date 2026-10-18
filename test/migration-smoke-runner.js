@@ -55,7 +55,7 @@ const oldMemory = {
   activeAgentSessionId: 'legacy-agent-session'
 };
 
-function runMigration(directory) {
+function runMigration(directory, options = {}) {
   const appArguments = path.basename(electronExe).toLowerCase() === 'electron.exe'
     ? [projectRoot]
     : [];
@@ -66,11 +66,16 @@ function runMigration(directory) {
       '--disable-gpu-compositing'
   ];
   const powerShellQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
-  const command = `& ${powerShellQuote(path.resolve(electronExe))} ${electronArguments.map(powerShellQuote).join(' ')}`;
+  const command = `& ${powerShellQuote(path.resolve(electronExe))} ${electronArguments.map(powerShellQuote).join(' ')}; exit $LASTEXITCODE`;
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
       cwd: projectRoot,
-      env: { ...process.env, MAI_MIGRATION_SMOKE: '1' },
+      env: {
+        ...process.env,
+        MAI_MIGRATION_SMOKE: '1',
+        MAI_MIGRATION_BACKUP_FAILURE_SMOKE: options.expectBackupFailure ? '1' : '',
+        MAI_MIGRATION_BACKUP_FAILURE_OUTPUT: options.outputPath || ''
+      },
       windowsHide: false,
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -229,7 +234,18 @@ async function main() {
     assert.ok(unreadableBackup, 'corrupt database must be preserved before recovery');
     assert.equal(fs.readFileSync(path.join(testRoot, unreadableBackup), 'utf8'), corruptText);
 
-    console.log(JSON.stringify({ ok: true, version: repaired.version, facts: repaired.facts.length, chatMessages: repaired.sessions[0].messages.length, archivedTaskSessions: repaired.legacyAgentArchive.length, archivedTaskMessages: repaired.legacyAgentArchive[0].messages.length, people: repaired.people.length, timeline: repaired.timeline.length, projects: repaired.projects.length, habits: repaired.habits.length, momentReplyRepaired: true, legacyTaskPreservedReadOnly: true, corruptDatabasePreserved: true, corruptDatabaseRecovered: true }));
+    const beforeUpgradeText = JSON.stringify({ ...repaired, version: 15, migrationSentinel: 'old-version-preserved' }, null, 2);
+    const conflictBackupPath = path.join(testRoot, 'mai-pet-memory.before-v16-from-v15.backup.json');
+    const conflictBackupText = 'preexisting recovery evidence must remain untouched';
+    const migrationFailurePath = path.join(testRoot, 'migration-backup-failure-result.json');
+    fs.writeFileSync(memoryPath, beforeUpgradeText, 'utf8');
+    fs.writeFileSync(conflictBackupPath, conflictBackupText, 'utf8');
+    await runMigration(testRoot, { expectBackupFailure: true, outputPath: migrationFailurePath });
+    assert.deepEqual(JSON.parse(fs.readFileSync(migrationFailurePath, 'utf8')), { ok: false, errorCode: 'BACKUP_CONFLICT' });
+    assert.equal(fs.readFileSync(memoryPath, 'utf8'), beforeUpgradeText, 'failed migration protection must not replace old Memory bytes');
+    assert.equal(fs.readFileSync(conflictBackupPath, 'utf8'), conflictBackupText, 'conflicting existing backup must remain untouched');
+
+    console.log(JSON.stringify({ ok: true, version: repaired.version, facts: repaired.facts.length, chatMessages: repaired.sessions[0].messages.length, archivedTaskSessions: repaired.legacyAgentArchive.length, archivedTaskMessages: repaired.legacyAgentArchive[0].messages.length, people: repaired.people.length, timeline: repaired.timeline.length, projects: repaired.projects.length, habits: repaired.habits.length, momentReplyRepaired: true, legacyTaskPreservedReadOnly: true, corruptDatabasePreserved: true, corruptDatabaseRecovered: true, migrationBackupFailurePreserved: true }));
   } finally {
     fs.rmSync(testRoot, { recursive: true, force: true });
   }

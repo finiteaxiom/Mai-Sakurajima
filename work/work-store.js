@@ -2,7 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { normalizeOperationResults } = require('./operation-result');
+const { OPERATION_TITLES, normalizeOperationResults } = require('./operation-result');
+const { ensureFileBackup, readJsonFile, writeJsonAtomic } = require('../json-persistence');
 
 const WORK_STORE_VERSION = 1;
 const MAX_PROJECTS = 100;
@@ -66,6 +67,73 @@ function normalizeSession(value = {}, projectIds = new Set()) {
   };
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateWorkStateShape(value) {
+  if (!isRecord(value)) {
+    throw Object.assign(new Error('Work JSON 根节点必须是对象。'), { code: 'JSON_SHAPE_ERROR' });
+  }
+  for (const key of ['projects', 'sessions']) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (!Array.isArray(value[key])) {
+      throw Object.assign(new Error(`Work JSON 的 ${key} 必须是数组。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (value[key].some((item) => !isRecord(item))) {
+      throw Object.assign(new Error(`Work JSON 的 ${key} 包含无效记录。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+  }
+
+  for (const [index, project] of (value.projects || []).entries()) {
+    if (typeof project.id !== 'string' || !project.id.trim()) {
+      throw Object.assign(new Error(`Work JSON 的 projects[${index}].id 无效。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (project.name !== undefined && typeof project.name !== 'string') {
+      throw Object.assign(new Error(`Work JSON 的 projects[${index}].name 必须是字符串。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (project.workspacePath !== undefined && typeof project.workspacePath !== 'string') {
+      throw Object.assign(new Error(`Work JSON 的 projects[${index}].workspacePath 必须是字符串。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+  }
+
+  const projectIds = new Set((value.projects || []).map((project) => project.id));
+  for (const [sessionIndex, session] of (value.sessions || []).entries()) {
+    if (typeof session.id !== 'string' || !session.id.trim() || typeof session.projectId !== 'string' || !session.projectId.trim()) {
+      throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}] 缺少有效 id 或 projectId。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (!projectIds.has(session.projectId)) {
+      throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}] 引用了不存在的项目。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (session.title !== undefined && typeof session.title !== 'string') {
+      throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].title 必须是字符串。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    if (session.messages === undefined) continue;
+    if (!Array.isArray(session.messages)) {
+      throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages 必须是数组。`), { code: 'JSON_SHAPE_ERROR' });
+    }
+    for (const [messageIndex, message] of session.messages.entries()) {
+      if (!isRecord(message)) {
+        throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages[${messageIndex}] 必须是对象。`), { code: 'JSON_SHAPE_ERROR' });
+      }
+      if (!['user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.trim()) {
+        throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages[${messageIndex}] 缺少有效 role 或 content。`), { code: 'JSON_SHAPE_ERROR' });
+      }
+      if (message.operationResults === undefined) continue;
+      if (!Array.isArray(message.operationResults) || message.operationResults.some((result) => !isRecord(result))) {
+        throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages[${messageIndex}].operationResults 必须是对象数组。`), { code: 'JSON_SHAPE_ERROR' });
+      }
+      if (message.operationResults.some((result) => typeof result.operation !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATION_TITLES, result.operation))) {
+        throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages[${messageIndex}].operationResults 包含无效操作。`), { code: 'JSON_SHAPE_ERROR' });
+      }
+      if (message.operationResults.some((result) => result.error !== undefined && result.error !== null && !isRecord(result.error))) {
+        throw Object.assign(new Error(`Work JSON 的 sessions[${sessionIndex}].messages[${messageIndex}].operationResults.error 必须是对象或 null。`), { code: 'JSON_SHAPE_ERROR' });
+      }
+    }
+  }
+  return value;
+}
+
 function normalizeWorkState(value = {}) {
   const fallback = defaultWorkState();
   const projects = Array.isArray(value.projects) ? value.projects.map(normalizeProject).filter((item) => item.id).slice(0, MAX_PROJECTS) : [];
@@ -82,31 +150,92 @@ class WorkStore {
   constructor(options = {}) {
     if (!options.filePath) throw new TypeError('WorkStore requires filePath.');
     this.filePath = options.filePath;
+    this.fileSystem = options.fileSystem || fs;
     this.now = options.now || (() => Date.now());
     this.random = options.random || Math.random;
+    this.beforeSave = options.beforeSave || null;
     this.state = defaultWorkState();
+    this.persistedState = structuredClone(this.state);
+    this.loadBlockedError = null;
   }
 
   load() {
+    // Calling load() is the explicit retry boundary. A failed retry below
+    // reinstates the write block; only a completed load clears it.
+    this.loadBlockedError = null;
+    let loaded;
     try {
-      if (!fs.existsSync(this.filePath)) return this.state;
-      this.state = normalizeWorkState(JSON.parse(fs.readFileSync(this.filePath, 'utf8')));
-    } catch {
+      loaded = readJsonFile(this.filePath, { fs: this.fileSystem });
+      if (loaded.exists) validateWorkStateShape(loaded.value);
+    } catch (error) {
+      if (!['JSON_PARSE_ERROR', 'JSON_SHAPE_ERROR'].includes(error?.code)) {
+        this.loadBlockedError = error;
+        throw error;
+      }
       try {
-        if (fs.existsSync(this.filePath)) fs.copyFileSync(this.filePath, `${this.filePath}.unreadable-${Date.now()}.backup.json`);
-      } catch { /* Keep the original error non-fatal. */ }
-      this.state = defaultWorkState();
+        this.protectUnreadableSource();
+        const recovered = defaultWorkState();
+        this.state = recovered;
+        this.persistedState = structuredClone(recovered);
+        this.save();
+        return this.snapshot();
+      } catch (protectionError) {
+        this.loadBlockedError = protectionError;
+        throw protectionError;
+      }
     }
-    return this.snapshot();
+
+    const previousState = this.state;
+    const previousPersistedState = this.persistedState;
+    try {
+      const normalized = loaded.exists ? normalizeWorkState(loaded.value) : defaultWorkState();
+      this.state = normalized;
+      this.persistedState = structuredClone(normalized);
+      return this.snapshot();
+    } catch (error) {
+      this.state = previousState;
+      this.persistedState = previousPersistedState;
+      if (loaded.exists) {
+        try {
+          this.protectUnreadableSource();
+        } catch (protectionError) {
+          this.loadBlockedError = protectionError;
+          throw protectionError;
+        }
+      }
+      this.loadBlockedError = error;
+      throw error;
+    }
+  }
+
+  protectUnreadableSource() {
+    const recoveryPath = `${this.filePath}.unreadable-${Date.now()}.backup.json`;
+    return ensureFileBackup(this.filePath, recoveryPath, { fs: this.fileSystem, path });
   }
 
   save() {
-    const normalized = normalizeWorkState(this.state);
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(normalized, null, 2), 'utf8');
-    fs.renameSync(temporary, this.filePath);
-    this.state = normalized;
+    try {
+      if (this.loadBlockedError) {
+        throw Object.assign(new Error('Work 数据加载未完成，已禁止覆盖原始文件；请先修复访问或原文保护问题后重新加载。'), {
+          code: 'WORK_STORE_LOAD_BLOCKED',
+          cause: this.loadBlockedError
+        });
+      }
+      this.beforeSave?.();
+      let normalized;
+      try {
+        normalized = normalizeWorkState(this.state);
+      } catch (error) {
+        this.loadBlockedError = error;
+        throw error;
+      }
+      writeJsonAtomic(this.filePath, normalized, { fs: this.fileSystem, path });
+      this.state = normalized;
+      this.persistedState = structuredClone(normalized);
+    } catch (error) {
+      this.state = structuredClone(this.persistedState);
+      throw error;
+    }
     return this.snapshot();
   }
 
@@ -117,6 +246,20 @@ class WorkStore {
       sessions: this.state.sessions.map(publicSession),
       lastOpenedProjectId: this.state.lastOpenedProjectId
     };
+  }
+
+  adoptPersistedState(value) {
+    try {
+      validateWorkStateShape(value);
+      const normalized = normalizeWorkState(value);
+      const persisted = structuredClone(normalized);
+      this.state = normalized;
+      this.persistedState = persisted;
+      return this.snapshot();
+    } catch (error) {
+      this.loadBlockedError = error;
+      throw error;
+    }
   }
 
   getProject(id) { const project = this.state.projects.find((item) => item.id === String(id || '')); return project ? publicProject(project) : null; }
@@ -203,4 +346,4 @@ class WorkStore {
   }
 }
 
-module.exports = { WORK_STORE_VERSION, WorkStore, defaultWorkState, normalizeWorkState };
+module.exports = { WORK_STORE_VERSION, WorkStore, defaultWorkState, normalizeWorkState, validateWorkStateShape };

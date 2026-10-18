@@ -1524,6 +1524,7 @@ async function testVoice() {
 
 function setConnection(config) {
   chatConfig = config;
+  if (config.credentialStorageWarning) setSettingsStatus(config.credentialStorageWarning, true);
   window.maiAppearance?.apply(config.appearance);
   applyWallpaper(config.wallpaper);
   renderWallpaperOptions();
@@ -4486,11 +4487,15 @@ async function exportPortableData() {
 }
 
 async function restoreFullBackup() {
-  if (!window.confirm('恢复会用备份内容替换当前聊天、记忆、人物、朋友圈和设置。程序会先自动保存一份恢复前备份。继续吗？')) return;
+  if (!window.confirm('恢复会替换备份覆盖的聊天、记忆、设置、知识索引、Work 记录和自定义图片。知识资料的原始文件仅保留路径引用。Mai 会先创建包含当前数据的恢复前备份。继续吗？')) return;
   restoreBackupButton.disabled = true;
   try {
     const result = await api.restoreBackup();
     if (result?.canceled) return;
+    if (result?.writeProtectionActive) {
+      showNotice(result.message || '备份恢复失败，Mai 已暂停本地数据写入。请重新启动以重试事务恢复。');
+      return;
+    }
     setConnection(result.config);
     memories = result.memories || [];
     memoryDiagnostics = result.diagnostics || memoryDiagnostics;
@@ -4500,11 +4505,17 @@ async function restoreFullBackup() {
     [sharedLifeState, lifeState, momentsState] = await Promise.all([
       api.getSharedLife(), api.getLifeState(), api.getMomentsState()
     ]);
+    await refreshWorkData();
     renderMemories();
     renderSharedLife();
     renderLifeState();
     renderMoments();
-    showNotice('完整备份已恢复；恢复前的数据也已自动备份。');
+    const notes = [];
+    if (result.credentialsMissing) notes.push('本机没有可用 API Key，请在设置中重新配置');
+    if (result.missingResources?.length) notes.push(`备份缺少：${result.missingResources.join('、')}`);
+    if (result.unavailableKnowledgeSources?.length) notes.push(`${result.unavailableKnowledgeSources.length} 个知识资料源路径当前不可访问，已保留备份中的索引内容`);
+    if (result.cleanupWarnings?.length) notes.push('恢复事务清理将在下次启动时继续');
+    showNotice(`完整备份已恢复；恢复前的数据也已自动备份。${notes.length ? ` ${notes.join('；')}。` : ''}`);
   } catch (error) {
     showNotice(errorText(error));
   } finally {

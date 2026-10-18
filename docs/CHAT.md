@@ -14,7 +14,9 @@ Chat 可以在用户本轮明确请求、并通过界面亲自选择本地文件
 
 授权 grant 只驻留 Main 内存，绑定当前 Chat session、真实 root、`list/read` 许可、签发时间与到期时间；切换聊天、重启、撤销或过期后必须重新选择。Renderer 从不接收 root，也不能指定绝对路径。每次路径仍经 `WorkspaceFileService -> WorkspaceSandbox` 校验，且额外拒绝 `.env`、`.pem`、`.key`、凭据与令牌类文件；非文本、二进制和超过 128 KiB 的文件同样拒绝。目录结果最多 300 项并携带 `truncated`，大文本只取有字符预算的开头摘录。
 
-原始结果仅以一次性 context id 关联到当前 `chat:send`，由 Main 取回并在系统 Prompt 中明确标记为“不可信外部内容”。文件中的指令不能改变权限、系统规则或读取范围。文件正文不会加入会话 messages、长期记忆、共同生活数据或 Work Store；包含该上下文的 Chat turn 跳过 commitments 与长期记忆候选合并，正常用户消息和最终回复仍按 Chat 规则持久化。
+原始结果仅以一次性 context id 关联到当前 `chat:send`，由 Main 取回并在系统 Prompt 中明确标记为“不可信外部内容”。文件中的指令不能改变权限、系统规则或读取范围。文件正文不会加入会话 messages、长期记忆、共同生活数据或 Work Store；最终普通回复仍可作为会话记录保存。
+
+会话记录追加与结构化候选消费由 `chat-turn-state.js` 分开处理。Main 将本轮是否带 Workspace context 传给 `ChatService`；Workspace 轮次的用户/助手消息标记 `contextSource: "workspace"`，后续历史重建也跳过这些用户消息。该轮只保留允许的会话和关系等待生命周期，不消费模型返回的 `mind`、behavior、episodes、topics、people、projects、habits、commitments 或 memories 候选，也不从本轮用户消息提取长期状态。普通 Chat 仍走原有的候选提取与合并路径。
 
 Chat 工作区不会自动转入 Agent，也不会启动 Action Runtime。行动任务只能由用户通过顶栏产品选择器显式进入 Agent 后，经独立的 `agent:*` IPC 进入 `ActionRuntimeManager`；该路径不调用 `ChatService`，也不将 `ActionSession` 写入聊天历史或长期记忆。Chat 与 Agent 分别显示各自的侧栏、上下文与会话列表，避免把行动记录误认为陪伴对话。两种工作区共用本地壁纸和本地麻衣头像设置。
 
@@ -37,9 +39,9 @@ Renderer chat:send
                  -> selected Provider.complete
                  -> parseStructuredReply
        -> conversationState.appendConversationTurn
-       -> mind / relationship / behaviorPatterns / shared-life updates
+       -> applyReplyState（Workspace 只更新允许的会话/关系生命周期；普通 Chat 消费结构化状态候选）
        -> saveMemory + shared-life broadcast + girlfriend follow-up schedule
-       -> commitments 与候选长期记忆合并
+       -> 普通 Chat 的 commitments 与候选长期记忆合并
        -> life-hub broadcast + pet reply delivery
   -> IPC 返回 reply、sessionId 与公开 sessions
 ```
@@ -48,15 +50,14 @@ Renderer chat:send
 
 ## 会话与状态更新顺序
 
-模型或本地回复产生后，`appendConversationHistory()` 调用 `conversation-state.js` 的 `appendConversationTurn()`，将最新用户消息与助手回复写入正确 session，并保持 `activeSessionId` 合法。
+模型或本地回复产生后，`chat-turn-state.js#appendConversationHistory()` 调用 `conversation-state.js` 的 `appendConversationTurn()`，将最新用户消息与助手回复写入正确 session，并保持 `activeSessionId` 合法。Workspace 轮次同时为两条消息标记 context 来源，后续历史重建不会把这类用户消息重新提炼成长期数据。
 
-随后 Main 编排：
+随后 `chat-turn-state.js#applyReplyState()` 与 `ChatService` 按本轮策略编排：
 
-1. 使用 `companion-state.js` 写入关系等待状态，并用 `applyMindTurn()` 更新 `mind`；
-2. 从已保存的用户原话提取受限的 `behaviorPatterns`；
-3. 合并 episodes、topics、people、projects、habits 和 `world` 等共同生活数据；
-4. 保存 memory、广播 shared-life 状态，并安排女友跟进；
-5. 合并有明确时间证据的 commitments 与长期记忆候选，再刷新 life-hub 的公开状态。
+1. 所有 Chat 回复都可以写入关系等待状态，并保存正常用户消息和最终助手回复；
+2. 普通 Chat 可更新 `mind`、受限的 `behaviorPatterns`、episodes、topics、people、projects、habits、`world`、commitments 与长期记忆；
+3. Workspace Chat 不消费本轮模型结构化候选，也不从本轮用户消息生成长期状态；
+4. 保存 memory、广播状态并安排女友跟进；保存失败会使 IPC 返回错误，不交付成功回复。
 
 `ChatService` 不直接实现会话数组 mutation，也不把 Prompt 或供应商协议复制进自己。状态 Owner 只负责状态变换；保存、广播和调度仍由 Main / Chat 编排决定。
 

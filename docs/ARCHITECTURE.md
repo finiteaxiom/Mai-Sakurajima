@@ -47,7 +47,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | 桌宠显隐 | `pet-visibility.js` 管理悬停/显隐定时器 | 业务状态与 Prompt |
 | 领域 IPC | `voice-ipc.js`、`assistant-ipc.js`、`timer-ipc.js`、`workspace-capability-ipc.js` 只注册各自 channel，并通过窄回调调用 Main 编排 | Prompt、持久化策略、跨域状态规则 |
 | Chat Workspace 只读授权 | `workspace-capability-gateway.js` 持有会话绑定、可过期/撤销的 root grant 与单次 context；只允许 `list` / `read`，并委托 `WorkspaceFileService` | Work Project、Agent、写入、递归扫描、持久化文件正文 |
-| Chat 编排 | `chat-service.js` 协调一轮消息、承诺与记忆副作用 | Prompt 组装、供应商协议 |
+| Chat 编排 | `chat-service.js` 协调一轮消息与副作用；`chat-turn-state.js` 分开追加会话记录和消费普通 Chat 的结构化状态候选 | Prompt 组装、供应商协议 |
 | Chat 请求 | `chat-request-service.js` 构造请求、控制上下文预算、执行普通/流式请求并解析结果 | 会话持久化、生活数据更新 |
 | 模型访问 | `model-gateway.js`、`model-provider-registry.js`、`deepseek-provider.js`、`local-model-provider.js` | Memory、Renderer、工具调用 |
 | Work 产品与执行 | `work/work-store.js` 拥有 Project/WorkSession 持久化；`action-ipc.js` 连接产品域与执行上下文；`agent/action-runtime-manager.js`、`mai-agent-runtime.js`、`agent-loop.js`、`agent-task-state.js`、`deepseek-agent-adapter.js`、`tool-orchestrator.js`、`workspace-file-service.js`、`workspace-sandbox.js`、`workspace-tools.js`、`word-document-service.js`、`action-session.js` 负责单次执行 | ChatService、Memory、Persona、Chat ModelGateway、Shell 或系统执行能力 |
@@ -57,7 +57,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | 记忆与生活算法 | `memory-engine.js`、`memory-extractor.js`、`shared-life.js`、`life-hub.js`、`continuity-engine.js`、`moments.js` 提供提取、选择、合并和规范化逻辑 | Provider、窗口、IPC 注册 |
 | 知识资料 | `knowledge-engine.js` 与 `knowledge-importer.js` 管理用户明确导入的本地资料与检索索引 | 后台任意扫描 |
 | 语音 | `voice-service.js`、`local-tts-service.js`、`voice-emotion.js` | Chat/Memory 写入 |
-| 持久化与备份 | `storage.js` 固定数据目录；`automatic-backup-service.js` 提供原子写入、每日备份与保留策略；`backup-engine.js` 提供备份、恢复与导出校验 | 业务决策 |
+| 持久化与备份 | `storage.js` 固定数据目录；`json-persistence.js` 提供可传播错误的同目录临时文件替换；`file-set-transaction.js` 管理多文件恢复和启动回滚；Main 在启动事务恢复成功前不加载产品数据，事务回滚失败后冻结 Memory、Settings、Knowledge、Work、自定义资源和后台保存入口；`automatic-backup-service.js` 写每日备份且保留既有备份；`backup-engine.js` 提供版本化备份、恢复与导出校验 | 业务决策 |
 
 `main.js` 仍直接注册其余 chat、settings、knowledge、backup、window 与 proactive IPC。这是当前实现，不应被文档描述成已经完全模块化。
 
