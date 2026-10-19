@@ -49,6 +49,8 @@ Renderer chat:send
 
 `chat-request-lifecycle.js` 由 Main 持有每轮请求的 requestId、sessionId、senderId 与 `AbortController`。同一 session 同时只接受一轮 Chat 请求；用户开始新一轮时，会取消该 session 尚未完成的主动问候或女友跟进。停止按钮、切换或删除会话、清空历史、关闭 Chat 窗口、开始恢复和应用退出都会使对应请求失效。Provider 的取消范围覆盖响应体和 SSE 读取；流式增量只会送给仍然有效的请求。
 
+Renderer 的 `chat-turn-coordinator.js` 只拥有当前视图的 turn token、session/view generation、乐观消息与 pending 清理、取消确认、Voice 流控制器和订阅释放；它不拥有请求 `AbortController`，也不决定 Main 的持久化。任何完整 Chat state hydration（包括同一 session 的重新加载）都会使旧 Renderer turn 失效并请求 Main 取消对应 session，避免旧 `finally`、迟到回复或流式完成覆盖新视图。主动消息后的会话列表刷新走有 generation/turn 序号校验的 metadata-only 路径，不重新加载消息视图；已有 turn 期间的迟到刷新会被丢弃。
+
 请求完成后的会话消息与长期状态候选在同一段 Main 编排中提交。若保存失败，`ChatService` 会恢复本轮前的内存快照，IPC 返回错误，不发送成功回复或状态通知。保存成功后才广播状态和交付回复。取消或过期的请求不会进入该提交路径。
 
 `directLocalTimeReply` 只处理符合条件的简短“当前时间/日期”问题，不请求模型；它也经过 Main 的请求生命周期、会话追加和单次持久化流程。流式请求把增量经现有 callback 送往 Renderer，最终仍只落下一条完整助手消息。

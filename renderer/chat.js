@@ -417,15 +417,9 @@ let momentsState = {
 };
 const momentRepliesInFlight = new Set();
 let runtimeSessions = [];
-let activeRuntimeSessionId = '';
 let chatWorkspaceStatus = { granted: false, operations: [] };
 let pendingWorkspaceRequest = null;
 let sending = false;
-let chatUiTurnSequence = 0;
-let activeChatUiTurnToken = '';
-let activeChatUiTurnSessionId = '';
-let chatCancellationPending = false;
-let chatCancellationSessionId = '';
 let activeAvatarTarget = null;
 let portraitReactionTimer = null;
 let voiceCapabilities = {
@@ -447,7 +441,6 @@ let voiceCallStartedAt = 0;
 let voiceCallDurationTimer = null;
 let voiceCallLoopPromise = null;
 let callMicrophoneMonitor = null;
-let activeVoiceStream = null;
 let inputDialogState = null;
 let conversationContextSessionId = '';
 let conversationContextKind = 'chat';
@@ -469,6 +462,32 @@ let workspaceExplorerRequestId = 0;
 let workspaceExplorerMayBeStale = false;
 let workspacePreview = null;
 let workspacePreviewRequestId = 0;
+
+function activeChatSessionId() {
+  return chatTurnCoordinator.getState().sessionId;
+}
+
+function updateChatTurnControls(state) {
+  if (!state || state.disposed || selectedRuntimeMode === 'agent') return;
+  sending = state.busy;
+  messageInput.disabled = state.busy;
+  sendButton.disabled = state.cancellationPending;
+  sendButton.textContent = state.cancellationPending ? '取消中…' : state.activeTurnToken ? '停止' : '发送';
+  sendButton.setAttribute('aria-label', state.cancellationPending
+    ? '正在取消当前回复'
+    : state.activeTurnToken ? '停止当前回复' : '发送');
+}
+
+const chatTurnCoordinator = window.MaiChatTurnCoordinator.createChatTurnCoordinator({
+  api,
+  onStateChange: updateChatTurnControls,
+  onApplyChatState: projectChatState,
+  onApplySessionMetadata: (state) => {
+    runtimeSessions = Array.isArray(state?.sessions) ? state.sessions : runtimeSessions;
+    renderHistory();
+    renderCompanionWorkspace();
+  }
+});
 
 function setCapabilityChips(labels) {
   contextCapabilityGrid.replaceChildren();
@@ -527,15 +546,19 @@ function renderChatWorkspaceCapability() {
 }
 
 async function refreshChatWorkspaceCapability() {
-  if (typeof api.getChatWorkspaceCapability !== 'function' || !activeRuntimeSessionId) return;
-  const result = await api.getChatWorkspaceCapability({ sessionId: activeRuntimeSessionId });
+  const sessionId = activeChatSessionId();
+  if (typeof api.getChatWorkspaceCapability !== 'function' || !sessionId || chatTurnCoordinator.getState().disposed) return;
+  const result = await api.getChatWorkspaceCapability({ sessionId });
+  if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return;
   if (result?.ok) chatWorkspaceStatus = result.status || { granted: false, operations: [] };
   renderChatWorkspaceCapability();
 }
 
 async function selectChatWorkspaceCapability() {
+  const sessionId = activeChatSessionId();
   try {
-    const result = await api.selectChatWorkspaceCapability({ sessionId: activeRuntimeSessionId });
+    const result = await api.selectChatWorkspaceCapability({ sessionId });
+    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return;
     if (!result?.ok) throw new Error(workspaceErrorText(result));
     chatWorkspaceStatus = result.status || chatWorkspaceStatus;
     renderChatWorkspaceCapability();
@@ -545,16 +568,22 @@ async function selectChatWorkspaceCapability() {
       pending.card?.remove();
       await sendWorkspaceIntent(pending.content, pending.intent);
     }
-  } catch (error) { showNotice(errorText(error)); }
+  } catch (error) {
+    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId) showNotice(errorText(error));
+  }
 }
 
 async function revokeChatWorkspaceCapability() {
+  const sessionId = activeChatSessionId();
   try {
-    const result = await api.revokeChatWorkspaceCapability({ sessionId: activeRuntimeSessionId });
+    const result = await api.revokeChatWorkspaceCapability({ sessionId });
+    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return;
     if (!result?.ok) throw new Error(workspaceErrorText(result));
     chatWorkspaceStatus = result.status || { granted: false, operations: [] };
     renderChatWorkspaceCapability();
-  } catch (error) { showNotice(errorText(error)); }
+  } catch (error) {
+    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId) showNotice(errorText(error));
+  }
 }
 
 function renderWorkspaceRequestCard(content, intent) {
@@ -1002,13 +1031,14 @@ async function ensureCallMicrophoneMonitor() {
       monitor.energyFrames += 1;
       if (rms >= 0.015) monitor.speechFrames += 1;
     }
-    if (activeVoiceStream?.canInterrupt && rms >= 0.07) {
+    const activeStream = chatTurnCoordinator.getVoiceStream();
+    if (activeStream?.canInterrupt && rms >= 0.07) {
       if (!monitor.interruptStartedAt) monitor.interruptStartedAt = Date.now();
       if (Date.now() - monitor.interruptStartedAt >= 320
         && Date.now() - monitor.lastInterruptAt >= 1200) {
         monitor.lastInterruptAt = Date.now();
         monitor.interruptStartedAt = 0;
-        activeVoiceStream.interrupt();
+        activeStream.interrupt();
       }
     } else if (rms < 0.045) {
       monitor.interruptStartedAt = 0;
@@ -1317,7 +1347,7 @@ function createVoiceStreamController(requestId, callGeneration, voiceProfile = {
         }
       }
       controller.canInterrupt = false;
-      if (activeVoiceStream === controller) activeVoiceStream = null;
+      chatTurnCoordinator.clearVoiceStream(controller);
       return !controller.canceled;
     },
     enqueue(text, emotion = '') {
@@ -1377,8 +1407,7 @@ function createVoiceStreamController(requestId, callGeneration, voiceProfile = {
 }
 
 function handleVoiceStreamDelta(payload = {}) {
-  if (!activeVoiceStream || payload.requestId !== activeVoiceStream.requestId) return;
-  activeVoiceStream.push(String(payload.delta || ''));
+  chatTurnCoordinator.handleVoiceStreamDelta(payload);
 }
 
 function renderLocalVoiceStatus(status = {}) {
@@ -2207,86 +2236,76 @@ async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
   const normalized = String(content || '').trim();
   if (!normalized) return null;
   const requestId = `voice-${generation}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const stream = voiceCallSpeakerMuted
-    ? null
-    : createVoiceStreamController(requestId, generation, voiceProfile);
-  if (stream) activeVoiceStream = stream;
   const createdAt = new Date().toISOString();
-  const requestSessionId = activeRuntimeSessionId;
+  const requestSessionId = activeChatSessionId();
   const turnConversation = conversation;
   const optimisticUserMessage = { role: 'user', content: normalized };
-  const optimisticUserElement = addMessage('user', normalized, { createdAt });
   turnConversation.push(optimisticUserMessage);
+  const optimisticUserElement = addMessage('user', normalized, { createdAt });
   const pending = addPendingMessage();
-  const turnToken = beginChatUiTurn(requestSessionId);
-  const isCurrentVisibleTurn = () => (
-    activeChatUiTurnToken === turnToken
-    && activeChatUiTurnSessionId === requestSessionId
-    && activeRuntimeSessionId === requestSessionId
-    && conversation === turnConversation
-    && generation === voiceCallGeneration
-  );
-  try {
-    const result = await api.sendChat({
+  const turn = chatTurnCoordinator.beginTurn({
+    sessionId: requestSessionId,
+    requestId,
+    voiceIsCurrent: () => (
+      activeChatSessionId() === requestSessionId
+      && conversation === turnConversation
+      && voiceCallActive
+      && generation === voiceCallGeneration
+    ),
+    removeOptimistic: () => {
+      optimisticUserElement.remove();
+      removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    },
+    removePending: () => pending.remove()
+  });
+  if (!turn) {
+    pending.remove();
+    optimisticUserElement.remove();
+    removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    return null;
+  }
+
+  if (!voiceCallSpeakerMuted) {
+    try {
+      turn.setVoiceStream(createVoiceStreamController(requestId, generation, voiceProfile));
+    } catch (error) {
+      return chatTurnCoordinator.runTurn(turn, {
+        send: async () => { throw error; },
+        onError: (failure, currentTurn) => {
+          if (currentTurn.isCurrent()) addVoiceCallLine('system', errorText(failure));
+        }
+      });
+    }
+  }
+
+  return chatTurnCoordinator.runTurn(turn, {
+    send: () => api.sendChat({
       sessionId: requestSessionId,
       messages: turnConversation,
       voiceMode: true,
       requestId,
       voiceProfile
-    });
-    if (result?.cancelled === true) {
-      stream?.cancel();
-      pending.remove();
-      optimisticUserElement.remove();
-      removeOptimisticMessage(turnConversation, optimisticUserMessage);
-      return null;
-    }
-    if (!isCurrentVisibleTurn()) {
-      stream?.cancel();
-      pending.remove();
-      return result;
-    }
-    if (stream) {
-      stream.finish(result.content, result.emotion);
-      await stream.done;
-      if (!isCurrentVisibleTurn()) {
-        stream.cancel();
-        pending.remove();
-        return result;
+    }),
+    onReply: (result, currentTurn) => {
+      if (!currentTurn.isCurrent()) return;
+      addMessage('assistant', result.content, { createdAt: result.createdAt, voiceMode: true });
+      turnConversation.push({ role: 'assistant', content: result.content });
+      conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
+      if (Array.isArray(result.sessions)) {
+        runtimeSessions = result.sessions;
+        renderHistory();
       }
-    }
-    if (!isCurrentVisibleTurn()) {
-      stream?.cancel();
-      pending.remove();
+      setMood(result);
+      const replyView = chatTurnCoordinator.getState();
+      if (chatConfig.memoryEnabled) refreshMemories(() => chatTurnCoordinator.isViewCurrent(replyView));
+      refreshLifeState(() => chatTurnCoordinator.isViewCurrent(replyView));
+      if (voiceCallActive && generation === voiceCallGeneration) addVoiceCallLine('assistant', result.content);
       return result;
+    },
+    onError: (error, currentTurn) => {
+      if (currentTurn.isCurrent()) addVoiceCallLine('system', errorText(error));
     }
-    pending.remove();
-    addMessage('assistant', result.content, { createdAt: result.createdAt, voiceMode: true });
-    turnConversation.push({ role: 'assistant', content: result.content });
-    conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-    if (Array.isArray(result.sessions)) {
-      runtimeSessions = result.sessions;
-      renderHistory();
-    }
-    setMood(result);
-    if (chatConfig.memoryEnabled) {
-      refreshMemories();
-    }
-    refreshLifeState();
-    if (voiceCallActive && generation === voiceCallGeneration) {
-      addVoiceCallLine('assistant', result.content);
-    }
-    return result;
-  } catch (error) {
-    stream?.cancel();
-    pending.remove();
-    optimisticUserElement.remove();
-    removeOptimisticMessage(turnConversation, optimisticUserMessage);
-    if (activeChatUiTurnToken === turnToken) addVoiceCallLine('system', errorText(error));
-    return null;
-  } finally {
-    finishChatUiTurn(turnToken);
-  }
+  });
 }
 
 async function runVoiceCall(generation) {
@@ -2410,16 +2429,14 @@ function endVoiceCall() {
   if (!voiceCallActive && voiceCallOverlay.classList.contains('overlay--hidden')) {
     return;
   }
-  if (activeChatUiTurnToken && activeChatUiTurnSessionId) {
-    cancelChatUiTurn().catch(() => {});
+  if (chatTurnCoordinator.getState().activeTurnToken) {
+    chatTurnCoordinator.cancelCurrentTurn({ onError: (error) => showNotice(errorText(error)) }).catch(() => {});
   }
   voiceCallActive = false;
   voiceCallGeneration += 1;
   clearInterval(voiceCallDurationTimer);
   voiceCallDurationTimer = null;
   api.stopVoiceListening().catch(() => {});
-  activeVoiceStream?.cancel();
-  activeVoiceStream = null;
   stopSpeaking();
   disposeCallMicrophoneMonitor();
   setVoiceCallState('通话已结束', false);
@@ -2441,7 +2458,7 @@ function toggleVoiceCallSpeaker() {
   voiceCallSpeakerButton.classList.toggle('call-control--off', voiceCallSpeakerMuted);
   voiceCallSpeakerButton.querySelector('span').textContent = voiceCallSpeakerMuted ? '已静音' : '扬声器';
   if (voiceCallSpeakerMuted) {
-    activeVoiceStream?.cancel();
+    chatTurnCoordinator.getVoiceStream()?.cancel();
     stopSpeaking();
   }
 }
@@ -2543,12 +2560,14 @@ function renderLifeState() {
   renderCompanionContext();
 }
 
-async function refreshLifeState() {
+async function refreshLifeState(isCurrent = () => true) {
   try {
-    lifeState = await api.getLifeState();
+    const nextState = await api.getLifeState();
+    if (chatTurnCoordinator.getState().disposed || !isCurrent()) return false;
+    lifeState = nextState;
     renderLifeState();
   } catch (error) {
-    showNotice(errorText(error));
+    if (!chatTurnCoordinator.getState().disposed && isCurrent()) showNotice(errorText(error));
   }
 }
 
@@ -2682,7 +2701,7 @@ function renderRecentConversations() {
   for (const session of sessions) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `sidebar-collection-item${session.id === activeRuntimeSessionId ? ' sidebar-collection-item--active' : ''}`;
+    button.className = `sidebar-collection-item${session.id === activeChatSessionId() ? ' sidebar-collection-item--active' : ''}`;
     button.dataset.chatSessionId = session.id;
     button.title = session.preview || session.title;
     const body = document.createElement('span');
@@ -2696,7 +2715,7 @@ function renderRecentConversations() {
     body.append(title, meta);
     button.append(collectionIcon('chat'), body);
     button.addEventListener('click', async () => {
-      if (session.id === activeRuntimeSessionId) return;
+      if (session.id === activeChatSessionId()) return;
       try {
         applyChatState(await api.selectChatSession(session.id));
       } catch (error) {
@@ -2711,7 +2730,7 @@ function renderRecentConversations() {
 function renderCompanionContext() {
   const activePlans = (Array.isArray(continuityState?.projects) ? continuityState.projects : [])
     .filter((project) => project.status === 'active');
-  const activeSession = runtimeSessions.find((session) => session.id === activeRuntimeSessionId);
+  const activeSession = runtimeSessions.find((session) => session.id === activeChatSessionId());
   contextMessageCount.textContent = String(activeSession?.messageCount || conversation.length || 0);
   contextMemoryCount.textContent = String(memories.length);
   contextPlanCount.textContent = String(activePlans.length);
@@ -2762,13 +2781,14 @@ function renderCompanionWorkspace() {
   conversationRuntimeEyebrow.textContent = 'MAI · CURRENT CONVERSATION';
   runtimePrivacyNote.textContent = 'Mai 会在本地保存对话与记忆；模型请求仅发送到你选择的 Provider。';
   messageInput.placeholder = '想和麻衣聊些什么？';
-  const chatTurnPending = Boolean(activeChatUiTurnToken);
-  sendButton.textContent = chatCancellationPending ? '取消中…' : chatTurnPending ? '停止' : '发送';
-  sendButton.setAttribute('aria-label', chatCancellationPending ? '正在取消当前回复' : chatTurnPending ? '停止当前回复' : '发送');
+  const turnState = chatTurnCoordinator.getState();
+  const chatTurnPending = Boolean(turnState.activeTurnToken);
+  sendButton.textContent = turnState.cancellationPending ? '取消中…' : chatTurnPending ? '停止' : '发送';
+  sendButton.setAttribute('aria-label', turnState.cancellationPending ? '正在取消当前回复' : chatTurnPending ? '停止当前回复' : '发送');
   voiceInputButton.hidden = false;
   messageInput.disabled = sending;
-  sendButton.disabled = chatCancellationPending;
-  const activeSession = runtimeSessions.find((session) => session.id === activeRuntimeSessionId);
+  sendButton.disabled = turnState.cancellationPending;
+  const activeSession = runtimeSessions.find((session) => session.id === activeChatSessionId());
   const title = activeSession?.title || '新对话';
   activeSessionTitle.textContent = title;
   workspaceLocation.textContent = title;
@@ -3349,7 +3369,7 @@ function renderHistory() {
   clearHistoryButton.disabled = visibleSessions.length === 0;
   for (const session of visibleSessions) {
     const item = document.createElement('article');
-    item.className = `history-item${session.id === activeRuntimeSessionId ? ' history-item--active' : ''}`;
+    item.className = `history-item${session.id === activeChatSessionId() ? ' history-item--active' : ''}`;
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
     item.dataset.chatSessionId = session.id;
@@ -3383,7 +3403,7 @@ function renderHistory() {
     deleteButton.addEventListener('click', async (event) => { event.stopPropagation(); await deleteConversationSession(session); });
     actions.append(renameButton, deleteButton);
     const selectSession = async () => {
-      if (session.id === activeRuntimeSessionId) { closeHistory(); return; }
+      if (session.id === activeChatSessionId()) { closeHistory(); return; }
       try { applyChatState(await api.selectChatSession(session.id)); closeHistory(); }
       catch (error) { showNotice(errorText(error)); }
     };
@@ -3397,31 +3417,21 @@ function renderHistory() {
   }
 }
 
-function applyChatState(state) {
+function projectChatState(state) {
   closeConversationContextMenu();
-  const nextSessionId = String(state?.activeSessionId || '');
-  if (chatCancellationPending && chatCancellationSessionId !== nextSessionId) {
-    chatCancellationPending = false;
-    chatCancellationSessionId = '';
-    sending = false;
-  }
-  if (activeChatUiTurnToken && activeChatUiTurnSessionId !== nextSessionId) {
-    const staleSessionId = activeChatUiTurnSessionId;
-    activeChatUiTurnToken = '';
-    activeChatUiTurnSessionId = '';
-    sending = false;
-    activeVoiceStream?.cancel();
-    activeVoiceStream = null;
-    api.cancelChatRequest(staleSessionId).catch(() => {});
-  }
-  activeRuntimeSessionId = nextSessionId;
   chatWorkspaceStatus = { granted: false, operations: [] };
   renderChatWorkspaceCapability();
   runtimeSessions = Array.isArray(state?.sessions) ? state.sessions : [];
   loadHistory(Array.isArray(state?.messages) ? state.messages : []);
   renderHistory();
   renderCompanionWorkspace();
-  refreshChatWorkspaceCapability().catch(() => renderChatWorkspaceCapability());
+  refreshChatWorkspaceCapability().catch(() => {
+    if (!chatTurnCoordinator.getState().disposed) renderChatWorkspaceCapability();
+  });
+}
+
+function applyChatState(state) {
+  return chatTurnCoordinator.applyChatState(state);
 }
 
 async function beginNewChat() {
@@ -3603,47 +3613,21 @@ function configPayload() {
 }
 
 async function sendWorkspaceIntent(content, intent) {
+  const sessionId = activeChatSessionId();
   try {
     const result = await api.executeChatWorkspaceCapability({
-      sessionId: activeRuntimeSessionId,
+      sessionId,
       operation: intent.operation,
       relativePath: intent.relativePath
     });
+    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return null;
     if (!result?.ok || !result.execution?.contextId) throw new Error(workspaceErrorText(result));
     return sendMessage({ content, skipWorkspaceIntent: true, workspaceContextId: result.execution.contextId });
   } catch (error) {
-    showNotice(errorText(error));
+    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId) showNotice(errorText(error));
     refreshChatWorkspaceCapability().catch(() => {});
     return null;
   }
-}
-
-function beginChatUiTurn(sessionId) {
-  const token = `chat-turn-${++chatUiTurnSequence}`;
-  chatCancellationPending = false;
-  chatCancellationSessionId = '';
-  activeChatUiTurnToken = token;
-  activeChatUiTurnSessionId = String(sessionId || '');
-  sending = true;
-  messageInput.disabled = true;
-  sendButton.disabled = false;
-  sendButton.textContent = '停止';
-  sendButton.setAttribute('aria-label', '停止当前回复');
-  return token;
-}
-
-function finishChatUiTurn(token) {
-  if (!token || activeChatUiTurnToken !== token) return;
-  activeChatUiTurnToken = '';
-  activeChatUiTurnSessionId = '';
-  chatCancellationPending = false;
-  chatCancellationSessionId = '';
-  sending = false;
-  messageInput.disabled = false;
-  sendButton.disabled = false;
-  sendButton.textContent = '发送';
-  sendButton.setAttribute('aria-label', '发送');
-  messageInput.focus();
 }
 
 function removeOptimisticMessage(targetConversation, message) {
@@ -3652,71 +3636,12 @@ function removeOptimisticMessage(targetConversation, message) {
 }
 
 async function cancelChatUiTurn() {
-  const token = activeChatUiTurnToken;
-  const sessionId = activeChatUiTurnSessionId;
-  if (!token) return;
-  activeChatUiTurnToken = '';
-  activeChatUiTurnSessionId = '';
-  chatCancellationPending = true;
-  chatCancellationSessionId = sessionId;
-  activeVoiceStream?.cancel();
-  activeVoiceStream = null;
-  sending = true;
-  messageInput.disabled = true;
-  sendButton.disabled = true;
-  sendButton.textContent = '取消中…';
-  sendButton.setAttribute('aria-label', '正在取消当前回复');
-  showNotice('正在取消当前回复…');
-  try {
-    const result = await api.cancelChatRequest(sessionId);
-    if (
-      chatCancellationPending
-      && chatCancellationSessionId === sessionId
-      && result?.cancelled !== true
-      && activeRuntimeSessionId === sessionId
-    ) {
-      const state = await api.getChatState();
-      if (
-        chatCancellationPending
-        && chatCancellationSessionId === sessionId
-        && activeRuntimeSessionId === sessionId
-      ) applyChatState(state);
-    }
-    if (chatCancellationPending && chatCancellationSessionId === sessionId) {
-      chatCancellationPending = false;
-      chatCancellationSessionId = '';
-      if (!activeChatUiTurnToken) {
-        sending = false;
-        messageInput.disabled = false;
-        sendButton.disabled = false;
-        sendButton.textContent = '发送';
-        sendButton.setAttribute('aria-label', '发送');
-      }
-    }
-  } catch (error) {
-    if (
-      chatCancellationPending
-      && chatCancellationSessionId === sessionId
-      && activeRuntimeSessionId === sessionId
-      && !activeChatUiTurnToken
-    ) {
-      chatCancellationPending = false;
-      chatCancellationSessionId = '';
-      activeChatUiTurnToken = token;
-      activeChatUiTurnSessionId = sessionId;
-      sending = true;
-      messageInput.disabled = true;
-      sendButton.disabled = false;
-      sendButton.textContent = '停止';
-      sendButton.setAttribute('aria-label', '停止当前回复');
-    }
-    showNotice(errorText(error));
-  }
+  await chatTurnCoordinator.cancelCurrentTurn({ onError: (error) => showNotice(errorText(error)) });
 }
 
 async function sendMessage(options = {}) {
   const content = String(options.content ?? messageInput.value).trim();
-  if (!content || sending) return;
+  if (!content || sending || chatTurnCoordinator.getState().busy) return;
   if (!chatConfig.configured) {
     showNotice('请先设置 DeepSeek API Key。');
     openSettings();
@@ -3740,61 +3665,65 @@ async function sendMessage(options = {}) {
   hideNotice();
   messageInput.value = '';
   resizeInput();
-  const requestSessionId = activeRuntimeSessionId;
+  const requestSessionId = activeChatSessionId();
   const turnConversation = conversation;
   const optimisticUserMessage = { role: 'user', content };
   const optimisticUserElement = addMessage('user', content, { createdAt: new Date().toISOString() });
   turnConversation.push(optimisticUserMessage);
   const pending = addPendingMessage();
-  const turnToken = beginChatUiTurn(requestSessionId);
+  const turn = chatTurnCoordinator.beginTurn({
+    sessionId: requestSessionId,
+    removeOptimistic: () => {
+      optimisticUserElement.remove();
+      removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    },
+    removePending: () => pending.remove()
+  });
+  if (!turn) {
+    pending.remove();
+    optimisticUserElement.remove();
+    removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    messageInput.value = content;
+    resizeInput();
+    return null;
+  }
 
-  try {
-    const result = await api.sendChat({
+  return chatTurnCoordinator.runTurn(turn, {
+    send: () => api.sendChat({
       sessionId: requestSessionId,
       messages: turnConversation,
       voiceMode: options.voiceMode === true,
       voiceProfile: options.voiceProfile || {},
       workspaceContextId: options.workspaceContextId || ''
-    });
-    if (result?.cancelled === true) {
-      pending.remove();
-      optimisticUserElement.remove();
-      removeOptimisticMessage(turnConversation, optimisticUserMessage);
-      return null;
-    }
-    if (activeChatUiTurnToken !== turnToken || activeChatUiTurnSessionId !== requestSessionId) {
-      pending.remove();
-      return result;
-    }
-    pending.remove();
-    const sameVisibleSession = activeRuntimeSessionId === requestSessionId && conversation === turnConversation;
-    if (sameVisibleSession) {
+    }),
+    onReply: async (result, currentTurn) => {
+      if (!currentTurn.isCurrent()
+        || activeChatSessionId() !== requestSessionId
+        || conversation !== turnConversation) return;
       addMessage('assistant', result.content, { createdAt: result.createdAt });
       turnConversation.push({ role: 'assistant', content: result.content });
       conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-    } else if (activeRuntimeSessionId === requestSessionId) {
-      applyChatState(await api.getChatState());
+      if (!currentTurn.isCurrent()) return;
+      if (Array.isArray(result.sessions)) runtimeSessions = result.sessions;
+      setMood(result);
+      const replyView = chatTurnCoordinator.getState();
+      if (options.voiceMode === true || voiceConfig().autoReadReplies) {
+        speakText(result.content, {
+          emotion: result.emotion,
+          voiceProfile: options.voiceProfile
+        }).catch((error) => {
+          if (chatTurnCoordinator.isViewCurrent(replyView)) showNotice(errorText(error));
+        });
+      }
+      if (chatConfig.memoryEnabled) refreshMemories(() => chatTurnCoordinator.isViewCurrent(replyView));
+      refreshLifeState(() => chatTurnCoordinator.isViewCurrent(replyView));
+      renderHistory();
+      renderCompanionWorkspace();
+    },
+    onError: (error, currentTurn) => {
+      if (currentTurn.isCurrent()) showNotice(errorText(error));
     }
-    if (Array.isArray(result.sessions)) runtimeSessions = result.sessions;
-    if (sameVisibleSession) setMood(result);
-    if (sameVisibleSession && (options.voiceMode === true || voiceConfig().autoReadReplies)) {
-      speakText(result.content, {
-        emotion: result.emotion,
-        voiceProfile: options.voiceProfile
-      }).catch((error) => showNotice(errorText(error)));
-    }
-    if (sameVisibleSession && chatConfig.memoryEnabled) refreshMemories();
-    if (sameVisibleSession) refreshLifeState();
-    renderHistory();
-    if (activeRuntimeSessionId === requestSessionId) renderCompanionWorkspace();
-  } catch (error) {
-    pending.remove();
-    optimisticUserElement.remove();
-    removeOptimisticMessage(turnConversation, optimisticUserMessage);
-    if (activeChatUiTurnToken === turnToken) showNotice(errorText(error));
-  } finally {
-    finishChatUiTurn(turnToken);
-  }
+  });
 }
 
 async function saveSettings() {
@@ -4853,15 +4782,18 @@ async function addManualMemory() {
   }
 }
 
-async function refreshMemories() {
+async function refreshMemories(isCurrent = () => true) {
   try {
-    [memories, memoryDiagnostics] = await Promise.all([
+    const [nextMemories, nextDiagnostics] = await Promise.all([
       api.getMemories(),
       api.getMemoryDiagnostics()
     ]);
+    if (chatTurnCoordinator.getState().disposed || !isCurrent()) return false;
+    memories = nextMemories;
+    memoryDiagnostics = nextDiagnostics;
     renderMemories();
   } catch (error) {
-    showNotice(errorText(error));
+    if (!chatTurnCoordinator.getState().disposed && isCurrent()) showNotice(errorText(error));
   }
 }
 
@@ -4930,7 +4862,7 @@ function loadHistory(history) {
 composer.addEventListener('submit', (event) => {
   event.preventDefault();
   if (selectedRuntimeMode === 'agent') sendActionMessage();
-  else if (activeChatUiTurnToken) cancelChatUiTurn();
+  else if (chatTurnCoordinator.getState().activeTurnToken) cancelChatUiTurn();
   else sendMessage();
 });
 messageInput.addEventListener('input', resizeInput);
@@ -4938,7 +4870,7 @@ messageInput.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
   event.preventDefault();
   if (selectedRuntimeMode === 'agent') sendActionMessage();
-  else if (activeChatUiTurnToken) cancelChatUiTurn();
+  else if (chatTurnCoordinator.getState().activeTurnToken) cancelChatUiTurn();
   else sendMessage();
 });
 runtimeSwitcherButton.addEventListener('click', () => {
@@ -5095,9 +5027,9 @@ try {
   // Local layout preferences are optional and never affect user data.
 }
 window.addEventListener('beforeunload', () => {
+  chatTurnCoordinator.dispose();
   voiceCallActive = false;
   api.stopVoiceListening().catch(() => {});
-  activeVoiceStream?.cancel();
   stopSpeaking();
   disposeCallMicrophoneMonitor();
   clearTimeout(portraitReactionTimer);
@@ -5109,6 +5041,7 @@ Promise.all([
   api.getSharedLife(), api.getLifeHub(), api.getContinuity(), api.getLifeState(), api.getMomentsState(),
   api.getActionStatus().catch((error) => ({ enabled: false, available: false, reason: errorText(error) })), api.getWorkData().catch(() => ({ projects: [], sessions: [], lastOpenedProjectId: '' }))
 ]).then(([config, chatState, storedMemories, storedMemoryDiagnostics, storedSharedLife, storedLifeHub, storedContinuity, storedLifeState, storedMomentsState, storedActionRuntimeStatus, storedWorkData]) => {
+  if (chatTurnCoordinator.getState().disposed) return;
   setConnection(config);
   memories = storedMemories;
   memoryDiagnostics = storedMemoryDiagnostics;
@@ -5127,11 +5060,13 @@ Promise.all([
   setRuntimeMode('chat');
   refreshSpeechVoices(); refreshVoiceCapabilities();
   if (!config.configured) openSettings(); else messageInput.focus();
-}).catch((error) => showNotice(errorText(error)));
+}).catch((error) => {
+  if (!chatTurnCoordinator.getState().disposed) showNotice(errorText(error));
+});
 
 api.onShowChatSettings(openSettings);
 api.onShowLifePanel(openLife);
-api.onVoiceStreamDelta(handleVoiceStreamDelta);
+chatTurnCoordinator.addDisposer(api.onVoiceStreamDelta(handleVoiceStreamDelta));
 api.onActionSessionStarted((session) => {
   activeActionSessionId = String(session?.id || '');
   if (selectedRuntimeMode === 'agent') renderActionWorkspace();
@@ -5156,7 +5091,9 @@ window.addEventListener('focus', () => {
   renderWorkspaceExplorer();
 });
 api.onChatProactiveGreeting(async (payload) => {
-  if (!payload?.sessionId || payload.sessionId === activeRuntimeSessionId) {
+  if (chatTurnCoordinator.getState().disposed) return;
+  const eventView = chatTurnCoordinator.getState();
+  if (!payload?.sessionId || payload.sessionId === eventView.sessionId) {
     addMessage('assistant', payload.content, { proactive: true, createdAt: payload.createdAt, messageId: payload.id });
     conversation.push({ role: 'assistant', content: payload.content });
     conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
@@ -5164,10 +5101,8 @@ api.onChatProactiveGreeting(async (payload) => {
     if (voiceConfig().autoReadReplies && !voiceCallActive) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
   }
   try {
-    const state = await api.getChatState();
-    activeRuntimeSessionId = state.activeSessionId;
-    runtimeSessions = state.sessions;
-    renderHistory(); renderCompanionWorkspace(); await refreshLifeState();
+    const refreshed = await chatTurnCoordinator.refreshSessionMetadata(() => api.getChatState());
+    if (refreshed) await refreshLifeState(() => chatTurnCoordinator.isViewCurrent(eventView));
   } catch {
     // The delivered message is still visible even if refreshing the sidebar fails.
   }
