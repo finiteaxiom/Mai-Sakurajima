@@ -6,11 +6,13 @@ const { registerActionIpc } = require('../action-ipc');
 
 test('Action IPC exposes a narrow action-only contract', async () => {
   const handlers = new Map();
+  let executionCount = 0;
   const manager = {
     status: () => ({ enabled: false, available: false }),
     getSession: (id) => ({ id }),
     listSessions: () => [{ id: 'action-1' }],
     execute: async (input) => {
+      executionCount += 1;
       manager.lastExecution = input;
       input.onStarted({ id: 'action-1', status: 'running' });
       input.onEvent({ type: 'TaskStarted', taskId: 'agent-task-1' });
@@ -20,6 +22,7 @@ test('Action IPC exposes a narrow action-only contract', async () => {
     cancel: async (id) => ({ id, status: 'cancelled' })
   };
   const messages = [];
+  let failCapacityCheck = false;
   const project = { id: 'project-1', name: '测试项目', workspacePath: 'D:\\workspace-a' };
   const workSession = { id: 'work-1', projectId: 'project-1', title: '新任务', messages: [] };
   const workStore = {
@@ -32,7 +35,19 @@ test('Action IPC exposes a narrow action-only contract', async () => {
     createSession: (projectId) => ({ ...workSession, projectId }),
     renameSession: (id, title, projectId) => ({ ...workSession, id, title, projectId }),
     deleteSession: (id, projectId) => ({ id, projectId }),
-    appendMessage: (sessionId, message) => { messages.push({ sessionId, ...message }); return message; }
+    appendMessage: (sessionId, message) => {
+      if (message.content.length > 12000) {
+        throw Object.assign(new Error('Work message too large.'), { code: 'WORK_MESSAGE_TOO_LARGE' });
+      }
+      messages.push({ sessionId, ...message });
+      return message;
+    },
+    ensureCanAppendMessages: (_sessionId, count) => {
+      if (failCapacityCheck && count === 2) {
+        throw Object.assign(new Error('Work history capacity reached.'), { code: 'WORK_HISTORY_LIMIT_REACHED' });
+      }
+      return true;
+    }
   };
   let configuration = { enabled: false, runtime: 'mock' };
   const sent = [];
@@ -64,6 +79,21 @@ test('Action IPC exposes a narrow action-only contract', async () => {
   assert.equal(manager.lastExecution.workSessionId, workSession.id);
   assert.equal(manager.lastExecution.workspacePath, 'D:\\workspace-a');
   assert.deepEqual(manager.lastExecution.capabilities, ['safe-local', 'workspace-read', 'workspace-write']);
+  failCapacityCheck = true;
+  const messagesBeforeRejectedTurn = messages.length;
+  await assert.rejects(
+    handlers.get('agent:execute')({ sender }, { text: '容量已满时不能启动行动', projectId: project.id, workSessionId: workSession.id }),
+    { code: 'WORK_HISTORY_LIMIT_REACHED' }
+  );
+  assert.equal(executionCount, 1);
+  assert.equal(messages.length, messagesBeforeRejectedTurn);
+  failCapacityCheck = false;
+  await assert.rejects(
+    handlers.get('agent:execute')({ sender }, { text: 'x'.repeat(12001), projectId: project.id, workSessionId: workSession.id }),
+    { code: 'WORK_MESSAGE_TOO_LARGE' }
+  );
+  assert.equal(executionCount, 1, 'oversized Work input must be rejected before action runtime execution');
+  assert.equal(messages.length, messagesBeforeRejectedTurn);
   await handlers.get('agent:configure')({}, { enabled: true, runtime: 'anything-else' });
   assert.deepEqual(configuration, { enabled: true, runtime: 'mock' });
 });

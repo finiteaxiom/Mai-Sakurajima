@@ -51,6 +51,8 @@ memoryState (Schema v16)
 
 `sessions` 保存会话标题、创建/更新时间和用户/助手消息；`activeSessionId` 指向当前会话。`legacyAgentArchive` 仅保存 v5 旧 Agent 会话的只读兼容归档，不进入 Renderer、Prompt、模型上下文或执行流程。
 
+Chat 新写入最多 200 段会话，每段最多新增到 2000 条消息，单条新消息最多 12000 个字符；会话或消息超限时 Main 会在模型请求前拒绝新的 Chat turn。Work 每个项目最多新建 300 段记录，每段最多新增到 2000 条消息，并在启动 Action Runtime 前为用户消息和最终回复预留两个位置；单条新 Work 消息最多 12000 个字符。上述上限只约束新写入，不会在加载、归一化或保存时删除超限旧记录；历史正文也不会因新消息字符上限而被截短。模型 Prompt 与 Renderer 当前上下文仍可按预算使用较短的消息窗口，持久历史完整保留。
+
 ### Long-term memory 与共同生活
 
 - `facts` 是带 category、canonical key、置信度、来源、时间状态和有限 evidence trail 的长期事实；同一 key 的当前事实冲突会被规范化为一条 current，其余保留为 historical。

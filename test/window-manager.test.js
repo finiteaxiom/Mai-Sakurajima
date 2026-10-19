@@ -9,7 +9,7 @@ class FakeWindow {
     this.events = new Map();
     this.destroyed = false;
     this.minimized = false;
-    this.webContents = {
+    this._webContents = {
       id: FakeWindow.nextId++,
       sent: [],
       send: (channel, payload) => this.webContents.sent.push([channel, payload]),
@@ -18,6 +18,11 @@ class FakeWindow {
         setPermissionCheckHandler: (handler) => { this.permissionCheckHandler = handler; }
       }
     };
+  }
+
+  get webContents() {
+    if (this.destroyed) throw new Error('Object has been destroyed');
+    return this._webContents;
   }
 
   setAlwaysOnTop() {}
@@ -42,6 +47,7 @@ FakeWindow.nextId = 1;
 function createHarness() {
   const state = { main: null, chat: null, timer: null, assistant: null, tray: null };
   let stopped = 0;
+  const closedWebContentsIds = [];
   const manager = createWindowManager({
     app: { quit() {} },
     BrowserWindow: FakeWindow,
@@ -68,7 +74,7 @@ function createHarness() {
     defaultPosition: () => ({ x: 100, y: 200 }),
     applyInvisibleOpacity() {},
     saveSettings() {},
-    onChatClosed: () => { stopped += 1; },
+    onChatClosed: (senderId) => { stopped += 1; closedWebContentsIds.push(senderId); },
     publicReminderState: () => ({ active: false }),
     reminderMenuLabel: () => '',
     cancelReminder() {},
@@ -80,7 +86,7 @@ function createHarness() {
     setInvisibleMode() {},
     requestQuit() {}
   });
-  return { manager, state, stopped: () => stopped };
+  return { manager, state, stopped: () => stopped, closedWebContentsIds };
 }
 
 test('window manager creates the pet window with the existing secure preload boundary', () => {
@@ -95,15 +101,18 @@ test('window manager creates the pet window with the existing secure preload bou
 });
 
 test('window manager retains chat media permission scope and closes voice recognition', () => {
-  const { manager, state, stopped } = createHarness();
+  const { manager, state, stopped, closedWebContentsIds } = createHarness();
   manager.openChat();
   const chat = state.chat;
   assert.equal(chat.permissionRequestHandler(chat.webContents, 'media', () => {}), undefined);
   assert.equal(chat.permissionCheckHandler(chat.webContents, 'media'), true);
   assert.equal(chat.permissionCheckHandler({ id: 999 }, 'media'), false);
+  const capturedWebContentsId = chat.webContents.id;
+  chat.destroyed = true;
   chat.events.get('closed')();
   assert.equal(state.chat, null);
   assert.equal(stopped(), 1);
+  assert.deepEqual(closedWebContentsIds, [capturedWebContentsId]);
 });
 
 test('pet context menu keeps common actions at the top level and groups secondary controls', () => {

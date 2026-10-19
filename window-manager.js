@@ -110,6 +110,7 @@ function createWindowManager({
       webPreferences: createWebPreferences()
     });
     setChatWindow(chatWindow);
+    const chatWebContentsId = chatWindow.webContents.id;
 
     const chatSession = chatWindow.webContents.session;
     chatSession.setPermissionRequestHandler((webContents, permission, callback) => {
@@ -138,7 +139,7 @@ function createWindowManager({
       if (showLife) chatWindow?.webContents.send('chat:show-life');
     });
     chatWindow.on('closed', () => {
-      onChatClosed();
+      onChatClosed(chatWebContentsId);
       setChatWindow(null);
     });
   }

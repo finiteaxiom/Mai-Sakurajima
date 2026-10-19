@@ -93,6 +93,40 @@ test('Chat request service selects streaming only when a delta callback exists',
   assert.equal(calls.some((entry) => Array.isArray(entry) && entry[0] === 'generate'), false);
 });
 
+test('Chat request service passes lifecycle signal and request id to Provider', async () => {
+  const controller = new AbortController();
+  const { service, calls } = createHarness();
+  await service.request([{ role: 'user', content: '说话' }], {
+    signal: controller.signal,
+    requestId: 'main-request-1'
+  });
+  const generation = calls.find((entry) => Array.isArray(entry) && entry[0] === 'generate')[1];
+  assert.equal(generation.signal, controller.signal);
+  assert.equal(generation.requestId, 'main-request-1');
+});
+
+test('Chat request service does not persist context after cancellation during reality lookup', async () => {
+  let resolveReality;
+  let saved = 0;
+  let generated = 0;
+  const controller = new AbortController();
+  const { service } = createHarness({
+    realityContext: () => new Promise((resolve) => { resolveReality = resolve; }),
+    saveContextState: () => { saved += 1; },
+    modelGateway: {
+      async generate() { generated += 1; return { rawContent: '{"reply":"late"}' }; },
+      async stream() { generated += 1; return { rawContent: '{"reply":"late"}' }; }
+    }
+  });
+  const pending = service.request([{ role: 'user', content: '你好' }], { signal: controller.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(Object.assign(new Error('cancelled'), { code: 'CHAT_REQUEST_CANCELLED' }));
+  resolveReality('weather');
+  await assert.rejects(pending, { code: 'CHAT_REQUEST_CANCELLED' });
+  assert.equal(saved, 0);
+  assert.equal(generated, 0);
+});
+
 test('Chat request service passes bounded Workspace data only through the system prompt boundary', async () => {
   const { service, calls } = createHarness();
   await service.request([{ role: 'user', content: '看看 README' }], {

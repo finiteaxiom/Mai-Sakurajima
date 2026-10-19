@@ -12,6 +12,9 @@ const REQUIRED_DEPENDENCIES = [
   'mergeCommitments',
   'extractExplicitMemories',
   'mergeCandidateMemories',
+  'captureTurnState',
+  'restoreTurnState',
+  'saveTurnState',
   'broadcastLifeHubState',
   'publicSessions'
 ];
@@ -28,14 +31,15 @@ class ChatService {
 
   async send(options = {}) {
     const dependencies = this.dependencies;
+    const assertRequestCurrent = typeof options.assertRequestCurrent === 'function'
+      ? options.assertRequestCurrent
+      : () => {};
     const messages = dependencies.sanitizeMessages(options.messages);
     const latestUserText = [...messages]
       .reverse()
       .find((message) => message.role === 'user')?.content || '';
 
-    // Preserve the existing companion lifecycle: returning users stop pending
-    // follow-ups before Mai starts producing the next Chat reply.
-    dependencies.noteUserReply();
+    assertRequestCurrent();
 
     const voiceMode = options.voiceMode === true;
     const reply = await runChatRuntime({
@@ -48,6 +52,8 @@ class ChatService {
           : voiceMode ? 360 : 700,
         structured: true,
         sessionId: options.sessionId,
+        requestId: options.requestId,
+        signal: options.signal,
         onDelta: typeof options.onDelta === 'function' ? options.onDelta : null,
         responseInstruction: String(options.responseInstruction || '').slice(0, 1200),
         diagnostic: options.diagnostic,
@@ -55,38 +61,71 @@ class ChatService {
       }
     });
 
-    const session = dependencies.appendConversationHistory(messages, reply, options.sessionId, {
-      workspaceContext: Boolean(options.workspaceContext)
-    });
-    const storedMessages = Array.isArray(session?.messages) ? session.messages : [];
-    const storedUserMessage = [...storedMessages]
-      .reverse()
-      .find((message) => message.role === 'user');
-    const memorySource = {
-      sourceText: latestUserText,
-      sourceSessionId: session.id,
-      sourceMessageId: storedUserMessage?.id || '',
-      sourceCreatedAt: storedUserMessage?.createdAt || new Date().toISOString()
-    };
-    dependencies.applyReplyState({
-      messages,
-      reply,
-      session,
-      source: memorySource,
-      workspaceContext: options.workspaceContext || null
-    });
+    assertRequestCurrent();
+    const turnSnapshot = dependencies.captureTurnState();
+    let session;
+    let storedMessages = [];
+    let memorySource;
+    let commitmentsChanged = false;
+    try {
+      // All persistent Chat turn mutations are made synchronously as one Main
+      // owned commit after the provider has returned and the request is current.
+      dependencies.noteUserReply({ save: false });
+      session = dependencies.appendConversationHistory(messages, reply, options.sessionId, {
+        workspaceContext: Boolean(options.workspaceContext)
+      });
+      storedMessages = Array.isArray(session?.messages) ? session.messages : [];
+      const storedUserMessage = [...storedMessages]
+        .reverse()
+        .find((message) => message.role === 'user');
+      memorySource = {
+        sourceText: latestUserText,
+        sourceSessionId: session.id,
+        sourceMessageId: storedUserMessage?.id || '',
+        sourceCreatedAt: storedUserMessage?.createdAt || new Date().toISOString()
+      };
+      dependencies.applyReplyState({
+        messages,
+        reply,
+        session,
+        source: memorySource,
+        workspaceContext: options.workspaceContext || null,
+        persist: false,
+        notify: false
+      });
 
-    // Workspace data is explicitly ephemeral and untrusted. The original user
-    // message and final reply may remain in this conversation, but neither the
-    // file content nor model-derived file facts can enter long-term memory.
-    if (!options.workspaceContext) {
-      dependencies.mergeCommitments(reply.commitments, memorySource);
-      dependencies.mergeCandidateMemories([
-        ...dependencies.extractExplicitMemories(latestUserText),
-        ...(Array.isArray(reply.memories) ? reply.memories : [])
-      ], memorySource);
+      // Workspace data is ephemeral and untrusted. It may be displayed in this
+      // turn's ordinary messages, but no model-derived candidate is consumed.
+      if (!options.workspaceContext) {
+        const commitmentResult = dependencies.mergeCommitments(reply.commitments, {
+          ...memorySource,
+          save: false,
+          notify: false
+        });
+        commitmentsChanged = commitmentResult?.changed === true;
+        dependencies.mergeCandidateMemories([
+          ...dependencies.extractExplicitMemories(latestUserText),
+          ...(Array.isArray(reply.memories) ? reply.memories : [])
+        ], { ...memorySource, save: false });
+      }
+      assertRequestCurrent();
+      dependencies.saveTurnState();
+    } catch (error) {
+      dependencies.restoreTurnState(turnSnapshot);
+      throw error;
     }
-    dependencies.broadcastLifeHubState();
+
+    try {
+      dependencies.afterTurnCommitted?.({
+        session,
+        memorySource,
+        commitmentsChanged,
+        workspaceContext: Boolean(options.workspaceContext)
+      });
+      dependencies.broadcastLifeHubState();
+    } catch (error) {
+      dependencies.onPostCommitNotificationError?.(error);
+    }
 
     const deliveredReply = {
       ...reply,
@@ -96,12 +135,14 @@ class ChatService {
       runtimeMode: CHAT_MODE
     };
     if (typeof dependencies.deliverReply === 'function') {
-      dependencies.deliverReply(deliveredReply);
+      try { dependencies.deliverReply(deliveredReply); }
+      catch (error) { dependencies.onPostCommitNotificationError?.(error); }
     }
 
     return {
       ...deliveredReply,
       sessionId: session.id,
+      requestId: options.requestId || '',
       sessions: dependencies.publicSessions(),
       lastRun: null,
       taskState: null

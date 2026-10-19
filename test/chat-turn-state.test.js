@@ -31,7 +31,16 @@ function createWriter(state, persistPath, fileSystem = fs) {
     maxSessions: 20,
     maxMessages: 200
   });
-  return createChatTurnStateWriter({
+  const saveMemory = () => {
+    try {
+      writeJsonAtomic(persistPath, state.value, { fs: fileSystem });
+      persistedState = structuredClone(state.value);
+    } catch (error) {
+      state.value = structuredClone(persistedState);
+      throw error;
+    }
+  };
+  const writer = createChatTurnStateWriter({
     getMemoryState: () => state.value,
     setMemoryState: (value) => { state.value = value; },
     conversationState,
@@ -43,18 +52,16 @@ function createWriter(state, persistPath, fileSystem = fs) {
     maxProjects: 100,
     maxHabits: 100,
     now: () => Date.parse('2026-10-18T00:00:01.000Z'),
-    saveMemory: () => {
-      try {
-        writeJsonAtomic(persistPath, state.value, { fs: fileSystem });
-        persistedState = structuredClone(state.value);
-      } catch (error) {
-        state.value = structuredClone(persistedState);
-        throw error;
-      }
-    },
+    saveMemory,
     broadcastSharedLifeState: () => {},
     scheduleGirlfriendFollowUp: () => {}
   });
+  return {
+    ...writer,
+    captureTurnState: () => structuredClone(state.value),
+    restoreTurnState: (snapshot) => { state.value = snapshot; },
+    saveTurnState: saveMemory
+  };
 }
 
 function createChatHarness(writer, reply) {
@@ -69,6 +76,9 @@ function createChatHarness(writer, reply) {
     mergeCommitments: () => {},
     extractExplicitMemories: () => [],
     mergeCandidateMemories: () => {},
+    captureTurnState: writer.captureTurnState,
+    restoreTurnState: writer.restoreTurnState,
+    saveTurnState: writer.saveTurnState,
     broadcastLifeHubState: () => {},
     publicSessions: () => [],
     deliverReply: (value) => messages.push(value)
@@ -139,6 +149,9 @@ test('ordinary Chat still applies real user-evidence-derived state candidates', 
     mergeCommitments: () => {},
     extractExplicitMemories: extractExplicitMemoryCandidates,
     mergeCandidateMemories: (values, source) => calls.push({ values, source }),
+    captureTurnState: writer.captureTurnState,
+    restoreTurnState: writer.restoreTurnState,
+    saveTurnState: writer.saveTurnState,
     broadcastLifeHubState: () => {},
     publicSessions: () => []
   });

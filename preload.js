@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld('maiPet', {
     return () => ipcRenderer.removeListener('agent:event', listener);
   },
   sendChat: (payload) => ipcRenderer.invoke('chat:send', payload),
+  cancelChatRequest: (sessionId) => ipcRenderer.invoke('chat:cancel-current-request', sessionId),
   getChatHistory: () => ipcRenderer.invoke('chat:get-history'),
   getChatState: () => ipcRenderer.invoke('chat:get-state'),
   newChatSession: () => ipcRenderer.invoke('chat:new-session'),

@@ -48,6 +48,9 @@ function createHarness(overrides = {}) {
     mergeCandidateMemories(items, source) {
       calls.push(['merge-memories', items, source]);
     },
+    captureTurnState() { calls.push('capture-turn-state'); return {}; },
+    restoreTurnState() { calls.push('restore-turn-state'); },
+    saveTurnState() { calls.push('save-turn-state'); },
     broadcastLifeHubState() {
       calls.push('broadcast-life-hub');
     },
@@ -74,11 +77,13 @@ test('Chat service owns the complete ordinary Chat turn without Agent state', as
   assert.equal(result.lastRun, null);
   assert.equal(result.taskState, null);
   assert.deepEqual(result.sessions, [{ id: 'chat-1' }]);
-  assert.deepEqual(calls.slice(0, 3).map((entry) => Array.isArray(entry) ? entry[0] : entry), [
+  assert.deepEqual(calls.slice(0, 4).map((entry) => Array.isArray(entry) ? entry[0] : entry), [
     'sanitize',
-    'note-user-reply',
-    'request'
+    'request',
+    'capture-turn-state',
+    'note-user-reply'
   ]);
+  assert.ok(calls.indexOf('save-turn-state') < calls.findIndex((entry) => Array.isArray(entry) && entry[0] === 'deliver-reply'));
   assert.ok(calls.some((entry) => Array.isArray(entry) && entry[0] === 'merge-memories'));
   assert.ok(calls.some((entry) => Array.isArray(entry) && entry[0] === 'deliver-reply'));
 });
@@ -177,6 +182,35 @@ test('Chat service does not persist a fabricated assistant reply after model fai
     /network failed/
   );
   assert.equal(appended, false);
+});
+
+test('Chat service rejects a stale completion before conversation or domain state writes', async () => {
+  const controller = new AbortController();
+  const reason = Object.assign(new Error('request canceled'), { code: 'CHAT_REQUEST_CANCELLED' });
+  let resolveRequest;
+  let writes = 0;
+  const { service } = createHarness({
+    requestReply: () => new Promise((resolve) => { resolveRequest = resolve; }),
+    appendConversationHistory() { writes += 1; },
+    noteUserReply() { writes += 1; },
+    applyReplyState() { writes += 1; },
+    mergeCommitments() { writes += 1; },
+    mergeCandidateMemories() { writes += 1; },
+    saveTurnState() { writes += 1; }
+  });
+  const pending = service.send({
+    messages: [{ role: 'user', content: '请回答' }],
+    sessionId: 'chat-1',
+    signal: controller.signal,
+    assertRequestCurrent() {
+      if (controller.signal.aborted) throw controller.signal.reason;
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(reason);
+  resolveRequest({ content: '这句晚到回复不能保存。', memories: [], commitments: [] });
+  await assert.rejects(pending, (error) => error === reason);
+  assert.equal(writes, 0);
 });
 
 test('Chat service rejects missing application dependencies at composition time', () => {

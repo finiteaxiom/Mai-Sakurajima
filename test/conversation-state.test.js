@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createConversationState, normalizeActiveSessionId } = require('../conversation-state');
 
-function createHarness() {
+function createHarness({ maxSessions = 3, maxMessages = 2 } = {}) {
   let nextId = 0;
   const conversation = createConversationState({
     createSession: () => ({
@@ -13,8 +13,8 @@ function createHarness() {
       messages: []
     }),
     sessionTitleFromMessages: (messages) => messages.find((message) => message.role === 'user')?.content || '新对话',
-    maxSessions: 3,
-    maxMessages: 2
+    maxSessions,
+    maxMessages
   });
   const state = {
     version: 16,
@@ -104,8 +104,8 @@ test('active-session normalization handles invalid ids and restored compatible s
   assert.equal(state.version, 16);
 });
 
-test('proactive messages append to the requested session and retain the message limit', () => {
-  const { conversation, state } = createHarness();
+test('proactive messages append to the requested session without deleting older history', () => {
+  const { conversation, state } = createHarness({ maxMessages: 3 });
   state.sessions = [{ id: 'session-1', title: '对话', createdAt: '', updatedAt: '', messages: [
     { id: 'old', role: 'assistant', content: '旧消息', createdAt: '2026-08-20T00:00:00.000Z' },
     { id: 'newer', role: 'user', content: '新消息', createdAt: '2026-08-20T00:01:00.000Z' }
@@ -117,6 +117,75 @@ test('proactive messages append to the requested session and retain the message 
     updatedAt: '2026-08-20T00:02:00.000Z'
   });
 
-  assert.deepEqual(session.messages.map((message) => message.id), ['newer', 'proactive']);
+  assert.deepEqual(session.messages.map((message) => message.id), ['old', 'newer', 'proactive']);
   assert.equal(state.activeSessionId, 'session-1');
+});
+
+test('conversation history over the new-write limit remains intact and additional writes are rejected', () => {
+  const { conversation, state } = createHarness();
+  state.sessions = [{
+    id: 'over-limit', title: '旧对话', createdAt: '', updatedAt: '',
+    messages: [
+      { id: 'one', role: 'user', content: '旧消息', createdAt: '' },
+      { id: 'two', role: 'assistant', content: '旧回复', createdAt: '' }
+    ]
+  }];
+  state.activeSessionId = 'over-limit';
+
+  assert.throws(() => conversation.appendConversationTurn(state, {
+    sessionId: 'missing-session',
+    userMessage: { id: 'new-user', role: 'user', content: '新问题', createdAt: '' },
+    assistantMessage: { id: 'new-assistant', role: 'assistant', content: '新回复', createdAt: '' },
+    updatedAt: ''
+  }), { code: 'CHAT_SESSION_UNAVAILABLE' });
+  assert.equal(state.sessions[0].messages.length, 2);
+
+  const tinyLimit = createConversationState({
+    createSession: () => ({ id: 'new', title: '新对话', messages: [] }),
+    sessionTitleFromMessages: () => '新对话',
+    maxSessions: 1,
+    maxMessages: 2
+  });
+  assert.throws(() => tinyLimit.appendConversationTurn(state, {
+    sessionId: 'over-limit',
+    userMessage: { id: 'new-user', role: 'user', content: '新问题', createdAt: '' },
+    assistantMessage: { id: 'new-assistant', role: 'assistant', content: '新回复', createdAt: '' },
+    updatedAt: ''
+  }), { code: 'CHAT_HISTORY_LIMIT_REACHED' });
+  assert.deepEqual(state.sessions[0].messages.map((message) => message.id), ['one', 'two']);
+});
+
+test('new conversation session is rejected instead of evicting an existing session', () => {
+  const { conversation, state } = createHarness();
+  state.sessions = [
+    { id: 'active', title: '旧对话', messages: [{ id: 'm1', role: 'user', content: '保留' }] },
+    { id: 'other', title: '另一段', messages: [{ id: 'm2', role: 'user', content: '也保留' }] }
+  ];
+  state.activeSessionId = 'active';
+  const limited = createConversationState({
+    createSession: () => ({ id: 'new', title: '新对话', messages: [] }),
+    sessionTitleFromMessages: () => '新对话',
+    maxSessions: 2,
+    maxMessages: 10
+  });
+
+  assert.throws(() => limited.createNewSession(state), { code: 'CHAT_SESSION_LIMIT_REACHED' });
+  assert.deepEqual(state.sessions.map((session) => session.id), ['active', 'other']);
+});
+
+test('Chat rejects overlong new messages while preserving historical text', () => {
+  const { conversation, state } = createHarness();
+  const session = conversation.ensureActiveSession(state);
+  const oversized = 'x'.repeat(12001);
+  assert.throws(() => conversation.assertCanAppendTurn(state, {
+    sessionId: session.id,
+    userMessage: { content: oversized }
+  }), { code: 'CHAT_MESSAGE_TOO_LARGE' });
+  assert.throws(() => conversation.appendConversationTurn(state, {
+    sessionId: session.id,
+    userMessage: { id: 'user', role: 'user', content: '短问题' },
+    assistantMessage: { id: 'assistant', role: 'assistant', content: oversized },
+    updatedAt: ''
+  }), { code: 'CHAT_MESSAGE_TOO_LARGE' });
+  assert.equal(session.messages.length, 0);
 });

@@ -27,26 +27,31 @@ Renderer chat:send
   -> Main chatSendHandler
   -> ChatService.send
        -> sanitize messages
-       -> noteUserReply（清除等待中的女友跟进，更新关系返回状态并保存）
        -> runChatRuntime
             ├─ directLocalTimeReply（确定性现实时间回答）
             └─ ChatRequestService.request
                  -> realityContext（按设置读取/刷新天气）
                  -> buildSystemPrompt
                  -> context budget trim
+                 -> 检查请求仍有效
                  -> saveContextState
                  -> ModelGateway.generate / stream
                  -> selected Provider.complete
                  -> parseStructuredReply
-       -> conversationState.appendConversationTurn
-       -> applyReplyState（Workspace 只更新允许的会话/关系生命周期；普通 Chat 消费结构化状态候选）
-       -> saveMemory + shared-life broadcast + girlfriend follow-up schedule
-       -> 普通 Chat 的 commitments 与候选长期记忆合并
-       -> life-hub broadcast + pet reply delivery
+       -> 再次检查请求仍有效
+       -> captureTurnState
+       -> noteUserReply + conversationState.appendConversationTurn
+       -> applyReplyState 与普通 Chat 候选合并（Workspace 不消费候选）
+       -> 一次 saveTurnState（失败则恢复内存快照并返回错误）
+       -> shared-life/life-hub broadcast + girlfriend follow-up schedule + reply delivery
   -> IPC 返回 reply、sessionId 与公开 sessions
 ```
 
-`directLocalTimeReply` 只处理符合条件的简短“当前时间/日期”问题，不请求模型；它随后仍经过正常的会话追加、关系/心智更新和持久化流程。流式请求把增量经现有 callback 送往 Renderer，最终仍只落下一条完整助手消息。
+`chat-request-lifecycle.js` 由 Main 持有每轮请求的 requestId、sessionId、senderId 与 `AbortController`。同一 session 同时只接受一轮 Chat 请求；用户开始新一轮时，会取消该 session 尚未完成的主动问候或女友跟进。停止按钮、切换或删除会话、清空历史、关闭 Chat 窗口、开始恢复和应用退出都会使对应请求失效。Provider 的取消范围覆盖响应体和 SSE 读取；流式增量只会送给仍然有效的请求。
+
+请求完成后的会话消息与长期状态候选在同一段 Main 编排中提交。若保存失败，`ChatService` 会恢复本轮前的内存快照，IPC 返回错误，不发送成功回复或状态通知。保存成功后才广播状态和交付回复。取消或过期的请求不会进入该提交路径。
+
+`directLocalTimeReply` 只处理符合条件的简短“当前时间/日期”问题，不请求模型；它也经过 Main 的请求生命周期、会话追加和单次持久化流程。流式请求把增量经现有 callback 送往 Renderer，最终仍只落下一条完整助手消息。
 
 ## 会话与状态更新顺序
 
@@ -57,9 +62,12 @@ Renderer chat:send
 1. 所有 Chat 回复都可以写入关系等待状态，并保存正常用户消息和最终助手回复；
 2. 普通 Chat 可更新 `mind`、受限的 `behaviorPatterns`、episodes、topics、people、projects、habits、`world`、commitments 与长期记忆；
 3. Workspace Chat 不消费本轮模型结构化候选，也不从本轮用户消息生成长期状态；
-4. 保存 memory、广播状态并安排女友跟进；保存失败会使 IPC 返回错误，不交付成功回复。
+4. `ChatService` 保存本轮前的状态快照，统一提交消息、关系状态和允许的长期候选；提交失败会恢复内存快照，并使 IPC 返回错误；
+5. 提交成功后才广播状态、安排女友跟进并交付回复。
 
 `ChatService` 不直接实现会话数组 mutation，也不把 Prompt 或供应商协议复制进自己。状态 Owner 只负责状态变换；保存、广播和调度仍由 Main / Chat 编排决定。
+
+Chat 历史列表显示所有有效会话，包括空的命名会话；侧栏只显示最近会话预览。历史记录和已保存消息不会因超过新写入上限而在加载或保存时被截断。Chat 新写入最多 200 段会话、每段最多 2000 条消息，单条新消息最多 12000 个字符；会话或消息超限会在模型调用前拒绝。Prompt 与 Renderer 的在用上下文仍按各自预算裁剪，完整记录继续保存在本地。
 
 ## Prompt 组成与顺序
 

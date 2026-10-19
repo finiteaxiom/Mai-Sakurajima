@@ -37,7 +37,7 @@ function normalizeProject(value = {}) {
 
 function normalizeMessage(value = {}) {
   const role = value.role === 'assistant' ? 'assistant' : value.role === 'user' ? 'user' : '';
-  const content = String(value.content || '').trim().slice(0, 12000);
+  const content = String(value.content || '').trim();
   if (!role || !content) return null;
   const createdAt = asIso(value.createdAt);
   return {
@@ -56,7 +56,7 @@ function normalizeSession(value = {}, projectIds = new Set()) {
   const projectId = String(value.projectId || '').trim().slice(0, 120);
   if (!projectIds.has(projectId)) return null;
   const createdAt = asIso(value.createdAt);
-  const messages = Array.isArray(value.messages) ? value.messages.map(normalizeMessage).filter(Boolean).slice(-MAX_MESSAGES_PER_SESSION) : [];
+  const messages = Array.isArray(value.messages) ? value.messages.map(normalizeMessage).filter(Boolean) : [];
   return {
     id: String(value.id || '').trim().slice(0, 120),
     projectId,
@@ -136,7 +136,7 @@ function validateWorkStateShape(value) {
 
 function normalizeWorkState(value = {}) {
   const fallback = defaultWorkState();
-  const projects = Array.isArray(value.projects) ? value.projects.map(normalizeProject).filter((item) => item.id).slice(0, MAX_PROJECTS) : [];
+  const projects = Array.isArray(value.projects) ? value.projects.map(normalizeProject).filter((item) => item.id) : [];
   const ids = new Set(projects.map((item) => item.id));
   const sessions = Array.isArray(value.sessions) ? value.sessions.map((item) => normalizeSession(item, ids)).filter(Boolean) : [];
   const lastOpenedProjectId = ids.has(String(value.lastOpenedProjectId || '')) ? String(value.lastOpenedProjectId) : '';
@@ -266,6 +266,17 @@ class WorkStore {
   getSession(id) { const session = this.state.sessions.find((item) => item.id === String(id || '')); return session ? publicSession(session) : null; }
   sessionsForProject(projectId) { return this.state.sessions.filter((item) => item.projectId === String(projectId || '')).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(publicSession); }
 
+  ensureCanAppendMessages(sessionId, count = 1) {
+    const session = this.state.sessions.find((item) => item.id === String(sessionId || ''));
+    if (!session) throw new Error('Work 记录不存在。');
+    if (!Number.isInteger(count) || count < 0 || session.messages.length + count > MAX_MESSAGES_PER_SESSION) {
+      throw Object.assign(new Error('此 Work 记录已达到安全上限，请新建记录后继续；已有记录会完整保留。'), {
+        code: 'WORK_HISTORY_LIMIT_REACHED'
+      });
+    }
+    return true;
+  }
+
   createProject(input = {}) {
     if (this.state.projects.length >= MAX_PROJECTS) throw new Error('Work 项目数量已达到安全上限。');
     const timestamp = new Date(this.now()).toISOString();
@@ -335,10 +346,14 @@ class WorkStore {
   appendMessage(sessionId, input = {}) {
     const session = this.state.sessions.find((item) => item.id === String(sessionId || ''));
     if (!session) throw new Error('Work 记录不存在。');
+    const content = String(input.content || '').trim();
+    if (content.length > 12000) {
+      throw Object.assign(new Error('Work 消息过长，请缩短后重试。'), { code: 'WORK_MESSAGE_TOO_LARGE' });
+    }
     const message = normalizeMessage({ ...input, id: makeId('work-message', this.now(), this.random), createdAt: input.createdAt || new Date(this.now()).toISOString() });
     if (!message) throw new Error('Work 消息无效。');
+    this.ensureCanAppendMessages(sessionId, 1);
     session.messages.push(message);
-    session.messages = session.messages.slice(-MAX_MESSAGES_PER_SESSION);
     if (message.role === 'user' && (session.title === '新任务' || !session.title)) session.title = message.content.slice(0, 120);
     session.updatedAt = new Date(this.now()).toISOString();
     this.openProject(session.projectId);

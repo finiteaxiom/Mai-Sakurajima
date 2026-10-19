@@ -52,6 +52,7 @@ test('preload exposes separate companion Chat and narrow Action contracts', asyn
   const { api, invokes } = loadPreloadContract();
   const payload = { runtimeMode: 'chat', sessionId: 'session-1', messages: [{ role: 'user', content: 'hello' }] };
   await api.sendChat(payload);
+  await api.cancelChatRequest('session-1');
   await api.getChatState();
   await api.selectChatSession('session-2');
   await api.renameChatSession('session-2', 'renamed');
@@ -70,6 +71,7 @@ test('preload exposes separate companion Chat and narrow Action contracts', asyn
   await api.revokeChatWorkspaceCapability({ sessionId: 'session-1' });
   assert.deepEqual(invokes, [
     { channel: 'chat:send', args: [payload] },
+    { channel: 'chat:cancel-current-request', args: ['session-1'] },
     { channel: 'chat:get-state', args: [] },
     { channel: 'chat:select-session', args: ['session-2'] },
     { channel: 'chat:rename-session', args: ['session-2', 'renamed'] },

@@ -421,6 +421,11 @@ let activeRuntimeSessionId = '';
 let chatWorkspaceStatus = { granted: false, operations: [] };
 let pendingWorkspaceRequest = null;
 let sending = false;
+let chatUiTurnSequence = 0;
+let activeChatUiTurnToken = '';
+let activeChatUiTurnSessionId = '';
+let chatCancellationPending = false;
+let chatCancellationSessionId = '';
 let activeAvatarTarget = null;
 let portraitReactionTimer = null;
 let voiceCapabilities = {
@@ -2207,29 +2212,58 @@ async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
     : createVoiceStreamController(requestId, generation, voiceProfile);
   if (stream) activeVoiceStream = stream;
   const createdAt = new Date().toISOString();
-  addMessage('user', normalized, { createdAt });
-  conversation.push({ role: 'user', content: normalized });
+  const requestSessionId = activeRuntimeSessionId;
+  const turnConversation = conversation;
+  const optimisticUserMessage = { role: 'user', content: normalized };
+  const optimisticUserElement = addMessage('user', normalized, { createdAt });
+  turnConversation.push(optimisticUserMessage);
   const pending = addPendingMessage();
-  sending = true;
-  sendButton.disabled = true;
-  messageInput.disabled = true;
+  const turnToken = beginChatUiTurn(requestSessionId);
+  const isCurrentVisibleTurn = () => (
+    activeChatUiTurnToken === turnToken
+    && activeChatUiTurnSessionId === requestSessionId
+    && activeRuntimeSessionId === requestSessionId
+    && conversation === turnConversation
+    && generation === voiceCallGeneration
+  );
   try {
     const result = await api.sendChat({
-      sessionId: activeRuntimeSessionId,
-      messages: conversation,
+      sessionId: requestSessionId,
+      messages: turnConversation,
       voiceMode: true,
       requestId,
       voiceProfile
     });
+    if (result?.cancelled === true) {
+      stream?.cancel();
+      pending.remove();
+      optimisticUserElement.remove();
+      removeOptimisticMessage(turnConversation, optimisticUserMessage);
+      return null;
+    }
+    if (!isCurrentVisibleTurn()) {
+      stream?.cancel();
+      pending.remove();
+      return result;
+    }
     if (stream) {
       stream.finish(result.content, result.emotion);
       await stream.done;
+      if (!isCurrentVisibleTurn()) {
+        stream.cancel();
+        pending.remove();
+        return result;
+      }
+    }
+    if (!isCurrentVisibleTurn()) {
+      stream?.cancel();
+      pending.remove();
+      return result;
     }
     pending.remove();
     addMessage('assistant', result.content, { createdAt: result.createdAt, voiceMode: true });
-    conversation.push({ role: 'assistant', content: result.content });
-    conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-    activeRuntimeSessionId = result.sessionId || activeRuntimeSessionId;
+    turnConversation.push({ role: 'assistant', content: result.content });
+    conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
     if (Array.isArray(result.sessions)) {
       runtimeSessions = result.sessions;
       renderHistory();
@@ -2246,13 +2280,12 @@ async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
   } catch (error) {
     stream?.cancel();
     pending.remove();
-    conversation.pop();
-    addVoiceCallLine('system', errorText(error));
+    optimisticUserElement.remove();
+    removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    if (activeChatUiTurnToken === turnToken) addVoiceCallLine('system', errorText(error));
     return null;
   } finally {
-    sending = false;
-    sendButton.disabled = false;
-    messageInput.disabled = false;
+    finishChatUiTurn(turnToken);
   }
 }
 
@@ -2376,6 +2409,9 @@ async function startVoiceCall() {
 function endVoiceCall() {
   if (!voiceCallActive && voiceCallOverlay.classList.contains('overlay--hidden')) {
     return;
+  }
+  if (activeChatUiTurnToken && activeChatUiTurnSessionId) {
+    cancelChatUiTurn().catch(() => {});
   }
   voiceCallActive = false;
   voiceCallGeneration += 1;
@@ -2726,11 +2762,12 @@ function renderCompanionWorkspace() {
   conversationRuntimeEyebrow.textContent = 'MAI · CURRENT CONVERSATION';
   runtimePrivacyNote.textContent = 'Mai 会在本地保存对话与记忆；模型请求仅发送到你选择的 Provider。';
   messageInput.placeholder = '想和麻衣聊些什么？';
-  sendButton.textContent = '发送';
-  sendButton.setAttribute('aria-label', '发送');
+  const chatTurnPending = Boolean(activeChatUiTurnToken);
+  sendButton.textContent = chatCancellationPending ? '取消中…' : chatTurnPending ? '停止' : '发送';
+  sendButton.setAttribute('aria-label', chatCancellationPending ? '正在取消当前回复' : chatTurnPending ? '停止当前回复' : '发送');
   voiceInputButton.hidden = false;
   messageInput.disabled = sending;
-  sendButton.disabled = sending;
+  sendButton.disabled = chatCancellationPending;
   const activeSession = runtimeSessions.find((session) => session.id === activeRuntimeSessionId);
   const title = activeSession?.title || '新对话';
   activeSessionTitle.textContent = title;
@@ -3307,7 +3344,7 @@ async function cancelAction() {
 
 function renderHistory() {
   historyList.replaceChildren();
-  const visibleSessions = runtimeSessions.filter((session) => session.messageCount > 0);
+  const visibleSessions = runtimeSessions;
   historyEmpty.classList.toggle('history-empty--hidden', visibleSessions.length > 0);
   clearHistoryButton.disabled = visibleSessions.length === 0;
   for (const session of visibleSessions) {
@@ -3362,7 +3399,22 @@ function renderHistory() {
 
 function applyChatState(state) {
   closeConversationContextMenu();
-  activeRuntimeSessionId = String(state?.activeSessionId || '');
+  const nextSessionId = String(state?.activeSessionId || '');
+  if (chatCancellationPending && chatCancellationSessionId !== nextSessionId) {
+    chatCancellationPending = false;
+    chatCancellationSessionId = '';
+    sending = false;
+  }
+  if (activeChatUiTurnToken && activeChatUiTurnSessionId !== nextSessionId) {
+    const staleSessionId = activeChatUiTurnSessionId;
+    activeChatUiTurnToken = '';
+    activeChatUiTurnSessionId = '';
+    sending = false;
+    activeVoiceStream?.cancel();
+    activeVoiceStream = null;
+    api.cancelChatRequest(staleSessionId).catch(() => {});
+  }
+  activeRuntimeSessionId = nextSessionId;
   chatWorkspaceStatus = { granted: false, operations: [] };
   renderChatWorkspaceCapability();
   runtimeSessions = Array.isArray(state?.sessions) ? state.sessions : [];
@@ -3566,6 +3618,102 @@ async function sendWorkspaceIntent(content, intent) {
   }
 }
 
+function beginChatUiTurn(sessionId) {
+  const token = `chat-turn-${++chatUiTurnSequence}`;
+  chatCancellationPending = false;
+  chatCancellationSessionId = '';
+  activeChatUiTurnToken = token;
+  activeChatUiTurnSessionId = String(sessionId || '');
+  sending = true;
+  messageInput.disabled = true;
+  sendButton.disabled = false;
+  sendButton.textContent = '停止';
+  sendButton.setAttribute('aria-label', '停止当前回复');
+  return token;
+}
+
+function finishChatUiTurn(token) {
+  if (!token || activeChatUiTurnToken !== token) return;
+  activeChatUiTurnToken = '';
+  activeChatUiTurnSessionId = '';
+  chatCancellationPending = false;
+  chatCancellationSessionId = '';
+  sending = false;
+  messageInput.disabled = false;
+  sendButton.disabled = false;
+  sendButton.textContent = '发送';
+  sendButton.setAttribute('aria-label', '发送');
+  messageInput.focus();
+}
+
+function removeOptimisticMessage(targetConversation, message) {
+  const index = targetConversation.indexOf(message);
+  if (index >= 0) targetConversation.splice(index, 1);
+}
+
+async function cancelChatUiTurn() {
+  const token = activeChatUiTurnToken;
+  const sessionId = activeChatUiTurnSessionId;
+  if (!token) return;
+  activeChatUiTurnToken = '';
+  activeChatUiTurnSessionId = '';
+  chatCancellationPending = true;
+  chatCancellationSessionId = sessionId;
+  activeVoiceStream?.cancel();
+  activeVoiceStream = null;
+  sending = true;
+  messageInput.disabled = true;
+  sendButton.disabled = true;
+  sendButton.textContent = '取消中…';
+  sendButton.setAttribute('aria-label', '正在取消当前回复');
+  showNotice('正在取消当前回复…');
+  try {
+    const result = await api.cancelChatRequest(sessionId);
+    if (
+      chatCancellationPending
+      && chatCancellationSessionId === sessionId
+      && result?.cancelled !== true
+      && activeRuntimeSessionId === sessionId
+    ) {
+      const state = await api.getChatState();
+      if (
+        chatCancellationPending
+        && chatCancellationSessionId === sessionId
+        && activeRuntimeSessionId === sessionId
+      ) applyChatState(state);
+    }
+    if (chatCancellationPending && chatCancellationSessionId === sessionId) {
+      chatCancellationPending = false;
+      chatCancellationSessionId = '';
+      if (!activeChatUiTurnToken) {
+        sending = false;
+        messageInput.disabled = false;
+        sendButton.disabled = false;
+        sendButton.textContent = '发送';
+        sendButton.setAttribute('aria-label', '发送');
+      }
+    }
+  } catch (error) {
+    if (
+      chatCancellationPending
+      && chatCancellationSessionId === sessionId
+      && activeRuntimeSessionId === sessionId
+      && !activeChatUiTurnToken
+    ) {
+      chatCancellationPending = false;
+      chatCancellationSessionId = '';
+      activeChatUiTurnToken = token;
+      activeChatUiTurnSessionId = sessionId;
+      sending = true;
+      messageInput.disabled = true;
+      sendButton.disabled = false;
+      sendButton.textContent = '停止';
+      sendButton.setAttribute('aria-label', '停止当前回复');
+    }
+    showNotice(errorText(error));
+  }
+}
+
 async function sendMessage(options = {}) {
   const content = String(options.content ?? messageInput.value).trim();
   if (!content || sending) return;
@@ -3590,51 +3738,62 @@ async function sendMessage(options = {}) {
   }
 
   hideNotice();
-  sending = true;
-  sendButton.disabled = true;
-  messageInput.disabled = true;
   messageInput.value = '';
   resizeInput();
-  addMessage('user', content, { createdAt: new Date().toISOString() });
-  conversation.push({ role: 'user', content });
+  const requestSessionId = activeRuntimeSessionId;
+  const turnConversation = conversation;
+  const optimisticUserMessage = { role: 'user', content };
+  const optimisticUserElement = addMessage('user', content, { createdAt: new Date().toISOString() });
+  turnConversation.push(optimisticUserMessage);
   const pending = addPendingMessage();
+  const turnToken = beginChatUiTurn(requestSessionId);
 
   try {
     const result = await api.sendChat({
-      sessionId: activeRuntimeSessionId,
-      messages: conversation,
+      sessionId: requestSessionId,
+      messages: turnConversation,
       voiceMode: options.voiceMode === true,
       voiceProfile: options.voiceProfile || {},
       workspaceContextId: options.workspaceContextId || ''
     });
+    if (result?.cancelled === true) {
+      pending.remove();
+      optimisticUserElement.remove();
+      removeOptimisticMessage(turnConversation, optimisticUserMessage);
+      return null;
+    }
+    if (activeChatUiTurnToken !== turnToken || activeChatUiTurnSessionId !== requestSessionId) {
+      pending.remove();
+      return result;
+    }
     pending.remove();
-    addMessage('assistant', result.content, { createdAt: result.createdAt });
-    conversation.push({ role: 'assistant', content: result.content });
-    conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-    activeRuntimeSessionId = result.sessionId || activeRuntimeSessionId;
+    const sameVisibleSession = activeRuntimeSessionId === requestSessionId && conversation === turnConversation;
+    if (sameVisibleSession) {
+      addMessage('assistant', result.content, { createdAt: result.createdAt });
+      turnConversation.push({ role: 'assistant', content: result.content });
+      conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
+    } else if (activeRuntimeSessionId === requestSessionId) {
+      applyChatState(await api.getChatState());
+    }
     if (Array.isArray(result.sessions)) runtimeSessions = result.sessions;
-    setMood(result);
-    if (options.voiceMode === true || voiceConfig().autoReadReplies) {
+    if (sameVisibleSession) setMood(result);
+    if (sameVisibleSession && (options.voiceMode === true || voiceConfig().autoReadReplies)) {
       speakText(result.content, {
         emotion: result.emotion,
         voiceProfile: options.voiceProfile
       }).catch((error) => showNotice(errorText(error)));
     }
-    if (chatConfig.memoryEnabled) refreshMemories();
-    refreshLifeState();
+    if (sameVisibleSession && chatConfig.memoryEnabled) refreshMemories();
+    if (sameVisibleSession) refreshLifeState();
     renderHistory();
-    renderCompanionWorkspace();
+    if (activeRuntimeSessionId === requestSessionId) renderCompanionWorkspace();
   } catch (error) {
     pending.remove();
-    conversation.pop();
-    showNotice(errorText(error));
+    optimisticUserElement.remove();
+    removeOptimisticMessage(turnConversation, optimisticUserMessage);
+    if (activeChatUiTurnToken === turnToken) showNotice(errorText(error));
   } finally {
-    sending = false;
-    sendButton.disabled = false;
-    sendButton.textContent = '发送';
-    sendButton.setAttribute('aria-label', '发送');
-    messageInput.disabled = false;
-    messageInput.focus();
+    finishChatUiTurn(turnToken);
   }
 }
 
@@ -4768,9 +4927,20 @@ function loadHistory(history) {
   }
 }
 
-composer.addEventListener('submit', (event) => { event.preventDefault(); if (selectedRuntimeMode === 'agent') sendActionMessage(); else sendMessage(); });
+composer.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (selectedRuntimeMode === 'agent') sendActionMessage();
+  else if (activeChatUiTurnToken) cancelChatUiTurn();
+  else sendMessage();
+});
 messageInput.addEventListener('input', resizeInput);
-messageInput.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (selectedRuntimeMode === 'agent') sendActionMessage(); else sendMessage(); } });
+messageInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  if (selectedRuntimeMode === 'agent') sendActionMessage();
+  else if (activeChatUiTurnToken) cancelChatUiTurn();
+  else sendMessage();
+});
 runtimeSwitcherButton.addEventListener('click', () => {
   const willOpen = runtimeSwitcherMenu.hidden;
   runtimeSwitcherMenu.hidden = !willOpen;

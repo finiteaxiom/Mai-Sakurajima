@@ -47,6 +47,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | 桌宠显隐 | `pet-visibility.js` 管理悬停/显隐定时器 | 业务状态与 Prompt |
 | 领域 IPC | `voice-ipc.js`、`assistant-ipc.js`、`timer-ipc.js`、`workspace-capability-ipc.js` 只注册各自 channel，并通过窄回调调用 Main 编排 | Prompt、持久化策略、跨域状态规则 |
 | Chat Workspace 只读授权 | `workspace-capability-gateway.js` 持有会话绑定、可过期/撤销的 root grant 与单次 context；只允许 `list` / `read`，并委托 `WorkspaceFileService` | Work Project、Agent、写入、递归扫描、持久化文件正文 |
+| Chat 请求生命周期 | Main 通过 `chat-request-lifecycle.js` 为 Chat 与主动请求绑定 requestId、session、sender 和取消信号；取消在会话切换、删除、窗口关闭、恢复和退出时生效 | Renderer 请求不能直接拥有 AbortController 或放宽持久化策略 |
 | Chat 编排 | `chat-service.js` 协调一轮消息与副作用；`chat-turn-state.js` 分开追加会话记录和消费普通 Chat 的结构化状态候选 | Prompt 组装、供应商协议 |
 | Chat 请求 | `chat-request-service.js` 构造请求、控制上下文预算、执行普通/流式请求并解析结果 | 会话持久化、生活数据更新 |
 | 模型访问 | `model-gateway.js`、`model-provider-registry.js`、`deepseek-provider.js`、`local-model-provider.js` | Memory、Renderer、工具调用 |

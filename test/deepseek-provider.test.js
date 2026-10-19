@@ -168,6 +168,72 @@ test('DeepSeekProvider distinguishes user cancellation from provider timeout', a
   );
 });
 
+test('DeepSeekProvider retains cancellation and timeout through delayed JSON response body reads', async () => {
+  let bodySignal;
+  const provider = makeProvider(async (_url, options) => {
+    bodySignal = options.signal;
+    return {
+      ok: true,
+      status: 200,
+      json: () => new Promise((_resolve, reject) => {
+        bodySignal.addEventListener('abort', () => reject(bodySignal.reason), { once: true });
+      })
+    };
+  });
+  const external = new AbortController();
+  const reason = Object.assign(new Error('cancel while reading body'), { code: 'CHAT_REQUEST_CANCELLED' });
+  const pending = provider.complete({
+    messages: [{ role: 'user', content: 'test' }],
+    signal: external.signal,
+    timeoutMs: 5000
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  external.abort(reason);
+  await assert.rejects(pending, (error) => error === reason);
+});
+
+test('DeepSeekProvider retains cancellation through delayed SSE reads and stops late deltas', async () => {
+  let requestSignal;
+  let deltaCount = 0;
+  const provider = makeProvider(async (_url, options) => {
+    requestSignal = options.signal;
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader() {
+          let first = true;
+          return {
+            async read() {
+              if (first) {
+                first = false;
+                return { done: false, value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"{\\"reply\\":\\"part"}}]}\n\n') };
+              }
+              return new Promise((_resolve, reject) => {
+                requestSignal.addEventListener('abort', () => reject(requestSignal.reason), { once: true });
+              });
+            },
+            async cancel() {}
+          };
+        }
+      }
+    };
+  });
+  const external = new AbortController();
+  const reason = Object.assign(new Error('cancel during SSE body'), { code: 'CHAT_REQUEST_CANCELLED' });
+  const pending = provider.complete({
+    messages: [{ role: 'user', content: 'test' }],
+    stream: true,
+    signal: external.signal,
+    timeoutMs: 5000,
+    onDelta: () => { deltaCount += 1; }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  external.abort(reason);
+  await assert.rejects(pending, (error) => error === reason);
+  assert.equal(deltaCount, 1, 'the first body chunk arrived before cancellation');
+});
+
 test('DeepSeekProvider reports missing key, malformed response and network errors', async () => {
   const missing = makeProvider(async () => jsonResponse({}), { getApiKey: () => '' });
   await assert.rejects(

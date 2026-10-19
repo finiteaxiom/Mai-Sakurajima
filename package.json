@@ -42,6 +42,7 @@
       "conversation-state.js",
       "chat-runtime.js",
       "chat-service.js",
+      "chat-request-lifecycle.js",
       "chat-request-service.js",
       "chat-history-boundary.js",
       "llm-cache-diagnostics.js",

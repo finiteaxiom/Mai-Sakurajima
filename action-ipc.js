@@ -47,8 +47,9 @@ function registerActionIpc({ ipcMain, actionRuntimeManager, workStore, getConfig
     const project = requireProject(workStore, input?.projectId);
     const workSession = input?.workSessionId ? workStore.getSession(input.workSessionId) : workStore.createSession(project.id);
     if (!workSession || workSession.projectId !== project.id) throw new Error('Work 记录不属于当前项目。');
-    const text = String(input?.text || '').trim().slice(0, 6000);
+    const text = String(input?.text || '').trim();
     if (!text) throw new Error('请先告诉我需要处理什么。');
+    workStore.ensureCanAppendMessages(workSession.id, 2);
     workStore.appendMessage(workSession.id, { role: 'user', content: text });
     const operationResults = [];
     let workspaceSelection = '';

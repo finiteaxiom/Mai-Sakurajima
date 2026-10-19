@@ -37,7 +37,7 @@ function createChatTurnStateWriter(options = {}) {
     const lastUserMessage = (Array.isArray(messages) ? messages : [])
       .slice().reverse().find((message) => message?.role === 'user');
     const nowText = new Date(options.now?.() ?? Date.now()).toISOString();
-    const content = String(lastUserMessage?.content || '').trim().slice(0, 12000);
+    const content = String(lastUserMessage?.content || '').trim();
     const contextSource = turnOptions.workspaceContext === true ? 'workspace' : undefined;
     const userMessage = content ? {
       id: String(lastUserMessage.id || options.createId('message')).slice(0, 120),
@@ -53,7 +53,7 @@ function createChatTurnStateWriter(options = {}) {
       assistantMessage: {
         id: options.createId('message'),
         role: 'assistant',
-        content: String(reply?.content || '').trim().slice(0, 12000),
+        content: String(reply?.content || '').trim(),
         action: reply?.action,
         emotion: reply?.emotion,
         contextSource,
@@ -183,9 +183,11 @@ function createChatTurnStateWriter(options = {}) {
     }
 
     options.setMemoryState(state);
-    options.saveMemory();
-    options.broadcastSharedLifeState?.();
-    options.scheduleGirlfriendFollowUp?.();
+    if (input.persist !== false) options.saveMemory();
+    if (input.notify !== false) {
+      options.broadcastSharedLifeState?.();
+      options.scheduleGirlfriendFollowUp?.();
+    }
     return session;
   }
 

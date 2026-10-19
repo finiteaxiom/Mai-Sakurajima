@@ -128,6 +128,7 @@ const { VoiceService } = require('./voice-service');
 const { LocalTtsService } = require('./local-tts-service');
 const { describeVoiceProfile } = require('./voice-emotion');
 const { ChatService } = require('./chat-service');
+const { createChatRequestLifecycle } = require('./chat-request-lifecycle');
 const { createChatTurnStateWriter } = require('./chat-turn-state');
 const { getApiKey: getStoredApiKey, migratePlaintextApiKey, setApiKey: setStoredApiKey } = require('./api-key-storage');
 const { ChatRequestService } = require('./chat-request-service');
@@ -277,6 +278,7 @@ const MAX_MEMORY_CANDIDATES_PER_REPLY = 32;
 const MAX_MEMORY_CONTEXT = 32;
 const MAX_CHAT_SESSIONS = 200;
 const MAX_MESSAGES_PER_SESSION = 2000;
+const MAX_CHAT_MESSAGE_CHARS = 12000;
 const MAX_CONTEXT_MESSAGES = 1600;
 const MAX_LIFE_ITEMS = 100;
 const MAX_EPISODES = 2000;
@@ -581,6 +583,7 @@ function markProductDataRecoveryComplete() {
 }
 
 function stopProductDataSchedulers() {
+  chatRequestLifecycle.cancelAll('restore_rollback_failed');
   clearTimeout(proactiveGreetingTimer);
   clearTimeout(girlfriendFollowUpTimer);
   clearTimeout(momentPostTimer);
@@ -636,6 +639,7 @@ function saveProductDataOnShutdown() {
 }
 let chatService = null;
 let chatRequestService = null;
+const chatRequestLifecycle = createChatRequestLifecycle({ createId: () => makeLocalId('chat-request') });
 const actionRuntimeManager = (() => {
   if (!actionRuntimeModules) return null;
   try {
@@ -956,7 +960,7 @@ function normalizeStoredMessage(message) {
   if (!message || !['user', 'assistant'].includes(message.role)) {
     return null;
   }
-  const content = String(message.content || '').trim().slice(0, 12000);
+  const content = String(message.content || '').trim();
   if (!content) {
     return null;
   }
@@ -990,8 +994,7 @@ function sessionTitleFromMessages(messages) {
 function normalizeSession(session, fallbackMessages = []) {
   const messages = (Array.isArray(session?.messages) ? session.messages : fallbackMessages)
     .map(normalizeStoredMessage)
-    .filter(Boolean)
-    .slice(-MAX_MESSAGES_PER_SESSION);
+    .filter(Boolean);
   const createdAt = session?.createdAt || messages[0]?.createdAt || new Date().toISOString();
   const updatedAt = session?.updatedAt
     || messages[messages.length - 1]?.createdAt
@@ -1028,7 +1031,8 @@ const conversationState = createConversationState({
   createSession: () => normalizeSession({ id: makeLocalId('chat'), title: '新对话' }),
   sessionTitleFromMessages,
   maxSessions: MAX_CHAT_SESSIONS,
-  maxMessages: MAX_MESSAGES_PER_SESSION
+  maxMessages: MAX_MESSAGES_PER_SESSION,
+  maxMessageChars: MAX_CHAT_MESSAGE_CHARS
 });
 const chatTurnStateWriter = createChatTurnStateWriter({
   getMemoryState: () => memoryState,
@@ -1066,8 +1070,7 @@ function normalizeLegacyAgentArchive(stored) {
           : null
       };
     })
-    .filter((session) => session.messages.length || session.runs.length || session.taskState)
-    .slice(0, MAX_CHAT_SESSIONS);
+    .filter((session) => session.messages.length || session.runs.length || session.taskState);
 }
 
 function normalizeMemoryState(stored) {
@@ -1138,9 +1141,7 @@ function normalizeMemoryState(stored) {
   const activeFacts = facts.filter((fact) => !memoryCandidateIsBlocked(fact, memoryCorrections));
 
   let sessions = (Array.isArray(stored?.sessions) ? stored.sessions : [])
-    .map((session) => normalizeSession(session))
-    .filter((session) => session.messages.length > 0 || session.title === '新对话')
-    .slice(0, MAX_CHAT_SESSIONS);
+    .map((session) => normalizeSession(session));
 
   if (!sessions.length && Array.isArray(stored?.history) && stored.history.length) {
     sessions = [normalizeSession({
@@ -2320,6 +2321,7 @@ async function restoreUserBackup() {
 
   // Validate and protect the complete current product snapshot before the
   // multi-file transaction starts. A failed automatic backup aborts restore.
+  chatRequestLifecycle.cancelAll('restore_started');
   createAutomaticBackup('before-restore');
   productDataWriteProtection.state = 'restore-in-progress';
   let transaction;
@@ -2538,7 +2540,11 @@ function resetRelationshipWaiting() {
 }
 
 function createNewChatSession() {
+  const previousSessionId = memoryState.activeSessionId;
   const { session } = conversationState.createNewSession(memoryState);
+  if (session.id !== previousSessionId) {
+    chatRequestLifecycle.cancelSession(previousSessionId, 'session_switched');
+  }
   resetRelationshipWaiting();
   saveMemory();
   scheduleGirlfriendFollowUp();
@@ -2546,6 +2552,14 @@ function createNewChatSession() {
 }
 
 function selectChatSession(sessionId) {
+  const requested = conversationState.getSession(memoryState, sessionId);
+  if (!requested) {
+    throw new Error('找不到这段历史对话，它可能已经被删除。');
+  }
+  const previousSessionId = memoryState.activeSessionId;
+  if (previousSessionId !== requested.id) {
+    chatRequestLifecycle.cancelSession(previousSessionId, 'session_switched');
+  }
   const session = conversationState.activateSession(memoryState, sessionId);
   if (!session) {
     throw new Error('找不到这段历史对话，它可能已经被删除。');
@@ -2569,6 +2583,7 @@ function renameChatSession(sessionId, title) {
 }
 
 function deleteChatSession(sessionId) {
+  chatRequestLifecycle.cancelSession(sessionId, 'session_deleted');
   conversationState.deleteSession(memoryState, sessionId);
   resetRelationshipWaiting();
   saveMemory();
@@ -2577,6 +2592,7 @@ function deleteChatSession(sessionId) {
 }
 
 function clearChatHistory() {
+  chatRequestLifecycle.cancelAll('history_cleared');
   const session = conversationState.clearSessions(memoryState);
   resetRelationshipWaiting();
   saveMemory();
@@ -3015,8 +3031,8 @@ function applySharedLifeTurn(userText, reply, sessionId, sourceCreatedAt = new D
   return chatTurnStateWriter.applySharedLifeTurn(userText, reply, sessionId, sourceCreatedAt, sourceMessageId);
 }
 
-function appendConversationHistory(messages, reply, sessionId) {
-  return chatTurnStateWriter.appendConversationHistory(messages, reply, sessionId);
+function appendConversationHistory(messages, reply, sessionId, turnOptions = {}) {
+  return chatTurnStateWriter.appendConversationHistory(messages, reply, sessionId, turnOptions);
 }
 
 function appendProactiveHistory(reply, source = 'girlfriend', sessionId = memoryState.activeSessionId) {
@@ -3026,7 +3042,7 @@ function appendProactiveHistory(reply, source = 'girlfriend', sessionId = memory
     message: {
       id: makeLocalId('message'),
       role: 'assistant',
-      content: String(reply.content || '').trim().slice(0, 5000),
+      content: String(reply.content || '').trim(),
       action: reply.action,
       emotion: reply.emotion,
       proactive: true,
@@ -3234,7 +3250,7 @@ function publicLifeItems() {
     .sort((left, right) => left.effectiveDueAt - right.effectiveDueAt);
 }
 
-function addLifeItem(input, source = 'manual') {
+function addLifeItem(input, source = 'manual', options = {}) {
   const title = String(input?.title || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const dueAt = new Date(input?.dueAt || 0);
   if (title.length < 2) {
@@ -3282,16 +3298,17 @@ function addLifeItem(input, source = 'manual') {
     memoryState.lifeItems.push(normalized);
   }
   memoryState.lifeItems = publicLifeItems().slice(0, MAX_LIFE_ITEMS);
-  saveMemory();
-  scheduleProactiveGreeting(false, 60 * 1000);
-  broadcastAssistantState();
+  if (options.save !== false) saveMemory();
+  if (options.notify !== false) {
+    scheduleProactiveGreeting(false, 60 * 1000);
+    broadcastAssistantState();
+  }
   return publicLifeState();
 }
 
 function mergeCommitments(candidates, options = {}) {
-  if (!Array.isArray(candidates)) {
-    return;
-  }
+  if (!Array.isArray(candidates)) return { changed: false };
+  let changed = false;
   for (const candidate of candidates.slice(0, 4)) {
     const dueAt = new Date(candidate?.dueAt || 0);
     const title = String(candidate?.title || '').trim();
@@ -3315,8 +3332,13 @@ function mergeCommitments(candidates, options = {}) {
       sourceSessionId: options.sourceSessionId,
       sourceMessageId: options.sourceMessageId,
       evidence
-    }, 'conversation');
+    }, 'conversation', {
+      save: options.save !== false,
+      notify: options.notify !== false
+    });
+    changed = true;
   }
+  return { changed };
 }
 
 function toggleLifeItem(itemId, completed) {
@@ -3959,12 +3981,16 @@ function proactiveReasonInstruction(decision = {}) {
   return reasonMap[decision.reason] || '请根据当前状态选择一个值得主动聊的话题。';
 }
 
-async function createProactiveConversationStarter(decision = {}) {
+async function createProactiveConversationStarter(decision = {}, requestedSessionId = '', request = null) {
+  request?.assertCurrent();
   const fallback = fallbackProactiveMessage(decision);
   if (!getDeepSeekApiKey()) {
     return fallback;
   }
-  const session = ensureActiveSession();
+  const session = requestedSessionId
+    ? conversationState.getSession(memoryState, requestedSessionId)
+    : ensureActiveSession();
+  if (!session) return fallback;
   const history = publicSessionMessages(session.id)
     .slice(-10)
     .map((message) => ({ role: message.role, content: message.content }));
@@ -3983,12 +4009,17 @@ async function createProactiveConversationStarter(decision = {}) {
     ], {
       maxTokens: 220,
       structured: true,
+      sessionId: session.id,
+      requestId: request?.requestId,
+      signal: request?.controller.signal,
       diagnostic: createLlmDiagnostic('proactive_greeting', 'createProactiveConversationStarter')
     });
+    request?.assertCurrent();
     return generated.content.includes('？') || generated.content.includes('?')
       ? generated
       : { ...generated, content: `${generated.content} ${fallback.content}` };
   } catch (error) {
+    if (!request?.isCurrent?.()) throw error;
     console.error('Could not generate proactive conversation starter:', error);
     return fallback;
   }
@@ -3998,8 +4029,26 @@ async function deliverProactiveGreeting(decision = { shouldSpeak: true, reason: 
   if (settings.deepseek.proactiveGreetingEnabled === false) {
     return null;
   }
-  const greeting = await createProactiveConversationStarter(decision);
-  const session = appendProactiveHistory(greeting, 'greeting');
+  const sessionId = ensureActiveSession().id;
+  if (chatRequestLifecycle.hasSession(sessionId)) {
+    return null;
+  }
+  try {
+    conversationState.assertCanAppendTurn(memoryState, { sessionId, userMessage: null });
+  } catch (error) {
+    if (error?.code === 'CHAT_HISTORY_LIMIT_REACHED') return null;
+    throw error;
+  }
+  const request = chatRequestLifecycle.begin({
+    sessionId,
+    senderId: 'proactive-greeting',
+    kind: 'proactive'
+  });
+  try {
+  const greeting = await createProactiveConversationStarter(decision, sessionId, request);
+  request.assertCurrent();
+  if (!conversationState.getSession(memoryState, sessionId)) return null;
+  const session = appendProactiveHistory(greeting, 'greeting', sessionId);
   if (decision.item?.id) {
     const item = memoryState.lifeItems.find((candidate) => candidate.id === decision.item.id);
     if (item) {
@@ -4046,6 +4095,12 @@ async function deliverProactiveGreeting(decision = { shouldSpeak: true, reason: 
   settings.deepseek.lastGreetingAt = Date.now();
   saveSettings();
   return payload;
+  } catch (error) {
+    if (request.status === 'cancelled') return null;
+    throw error;
+  } finally {
+    request.finish();
+  }
 }
 
 function scheduleProactiveGreeting(initial = false, requestedDelayMs = 0) {
@@ -4409,7 +4464,9 @@ function scheduleGirlfriendFollowUp() {
   const delayMinutes = policy.intervalMinutes;
   const baseTime = relationship.lastCompanionMessageAt || relationship.waitingSince;
   const dueAt = baseTime + delayMinutes * 60 * 1000;
-  const delay = Math.max(1000, dueAt - Date.now(), quietHoursDelay());
+  const activeSession = String(relationship.waitingSessionId || '');
+  const busyDelay = chatRequestLifecycle.hasSession(activeSession) ? 60 * 1000 : 0;
+  const delay = Math.max(1000, dueAt - Date.now(), quietHoursDelay(), busyDelay);
   girlfriendFollowUpTimer = setTimeout(deliverGirlfriendFollowUp, Math.min(delay, 2147483000));
 }
 
@@ -4425,7 +4482,8 @@ function fallbackGirlfriendMessage(followUpCount) {
   return group[Math.floor(Math.random() * group.length)];
 }
 
-async function createGirlfriendFollowUp(followUpCount, waitingMinutes, sessionId) {
+async function createGirlfriendFollowUp(followUpCount, waitingMinutes, sessionId, request) {
+  request.assertCurrent();
   const history = publicSessionMessages(sessionId)
     .slice(-10)
     .map((message) => ({ role: message.role, content: message.content }));
@@ -4444,15 +4502,21 @@ async function createGirlfriendFollowUp(followUpCount, waitingMinutes, sessionId
   }
 
   try {
-    return await requestDeepSeek([
+    const reply = await requestDeepSeek([
       ...history,
       { role: 'user', content: instruction }
     ], {
       maxTokens: 180,
       structured: true,
+      sessionId,
+      requestId: request.requestId,
+      signal: request.controller.signal,
       diagnostic: createLlmDiagnostic('girlfriend_follow_up', 'createGirlfriendFollowUp')
     });
+    request.assertCurrent();
+    return reply;
   } catch (error) {
+    if (!request.isCurrent()) throw error;
     console.error('Could not generate girlfriend follow-up:', error);
     const content = fallbackGirlfriendMessage(followUpCount);
     return { content, ...inferActionFromText(content), memories: [] };
@@ -4474,21 +4538,43 @@ async function deliverGirlfriendFollowUp(force = false) {
     return null;
   }
 
-  girlfriendMessageSending = true;
   const waitingMarker = relationship.waitingSince;
   const waitingSessionId = relationship.waitingSessionId;
   const followUpCount = relationship.followUpCount;
+  if (!waitingSessionId || chatRequestLifecycle.hasSession(waitingSessionId)) {
+    scheduleGirlfriendFollowUp();
+    return null;
+  }
+  if (!conversationState.getSession(memoryState, waitingSessionId)) return null;
+  try {
+    conversationState.assertCanAppendTurn(memoryState, {
+      sessionId: waitingSessionId,
+      userMessage: null
+    });
+  } catch (error) {
+    if (error?.code === 'CHAT_HISTORY_LIMIT_REACHED') return null;
+    throw error;
+  }
+  girlfriendMessageSending = true;
+  const request = chatRequestLifecycle.begin({
+    sessionId: waitingSessionId,
+    senderId: 'girlfriend-follow-up',
+    kind: 'proactive'
+  });
   const waitingMinutes = Math.max(1, Math.round((Date.now() - waitingMarker) / 60000));
   try {
     const reply = await createGirlfriendFollowUp(
       followUpCount,
       waitingMinutes,
-      waitingSessionId
+      waitingSessionId,
+      request
     );
+    request.assertCurrent();
     if (
       settings.deepseek.girlfriendModeEnabled !== true
       || memoryState.relationship.waitingSince !== waitingMarker
       || memoryState.relationship.waitingSessionId !== waitingSessionId
+      || !conversationState.getSession(memoryState, waitingSessionId)
     ) {
       return null;
     }
@@ -4512,17 +4598,18 @@ async function deliverGirlfriendFollowUp(force = false) {
     }
     return payload;
   } finally {
+    request.finish();
     girlfriendMessageSending = false;
     scheduleGirlfriendFollowUp();
   }
 }
 
-function noteUserReply() {
+function noteUserReply(options = {}) {
   clearTimeout(girlfriendFollowUpTimer);
   const now = Date.now();
   markMindUserReturned(memoryState, now);
   recordRelationshipUserReply(memoryState, now, MAX_CONTACT_COUNT);
-  saveMemory();
+  if (options.save !== false) saveMemory();
 }
 
 function launchExecutable() {
@@ -5255,6 +5342,54 @@ async function runP0ChatFlowSmoke(outputPath) {
       messages: [{ id: 'p0-chat-user-message', role: 'user', content: '现在几点？' }]
     });
     const after = publicChatState(reply.sessionId);
+    const workspaceSession = createNewChatSession();
+    const workspaceMarker = 'P0_WORKSPACE_FILE_MARKER_DO_NOT_PERSIST';
+    const workspaceReply = await chatService.send({
+      sessionId: workspaceSession.activeSessionId,
+      messages: [{ id: 'p0-workspace-user-message', role: 'user', content: '现在几点？' }],
+      workspaceContext: {
+        payload: { kind: 'workspace_file', relativePath: 'note.txt', content: workspaceMarker }
+      }
+    });
+    const persistedAfterWorkspaceTurn = JSON.parse(fs.readFileSync(memoryPath(), 'utf8'));
+    const workspaceStoredSession = persistedAfterWorkspaceTurn.sessions.find((item) => item.id === workspaceReply.sessionId);
+    const workspaceStoredUser = workspaceStoredSession?.messages.find((message) => (
+      message.role === 'user' && message.content === '现在几点？'
+    ));
+    const workspaceMarkerExcluded = !JSON.stringify(persistedAfterWorkspaceTurn).includes(workspaceMarker);
+    const originalRequestReply = chatService.dependencies.requestReply;
+    let overlongProviderCalled = false;
+    chatService.dependencies.requestReply = async () => {
+      overlongProviderCalled = true;
+      throw new Error('The provider must not receive an overlong Chat message.');
+    };
+    let overlongMessageRejected = false;
+    try {
+      await chatSendHandler({ sender: { id: -2, isDestroyed: () => false, send: () => {} } }, {
+        sessionId: workspaceSession.activeSessionId,
+        messages: [{ role: 'user', content: 'x'.repeat(MAX_CHAT_MESSAGE_CHARS + 1) }]
+      });
+    } catch (error) {
+      overlongMessageRejected = error?.code === 'CHAT_MESSAGE_TOO_LARGE';
+    } finally {
+      chatService.dependencies.requestReply = originalRequestReply;
+    }
+    const legacyLongText = `legacy-${'x'.repeat(15000)}`;
+    const normalizedLongHistory = normalizeMemoryState({
+      ...memoryState,
+      activeSessionId: reply.sessionId,
+      sessions: [
+        ...memoryState.sessions,
+        {
+          id: 'p0-legacy-long-history',
+          title: '旧长消息',
+          messages: [{ id: 'p0-legacy-long-message', role: 'user', content: legacyLongText }]
+        }
+      ]
+    });
+    const longHistoryPreserved = normalizedLongHistory.sessions
+      .find((item) => item.id === 'p0-legacy-long-history')
+      ?.messages[0]?.content === legacyLongText;
     const firstCoffeeSource = '我喜欢喝拿铁。';
     mergeCandidateMemories([
       ...extractExplicitMemoryCandidates(firstCoffeeSource),
@@ -5338,6 +5473,11 @@ async function runP0ChatFlowSmoke(outputPath) {
         && after.activeSessionId === reply.sessionId
         && storedSession?.messages?.some((message) => message.role === 'user' && message.content === '现在几点？')
         && storedSession?.messages?.some((message) => message.role === 'assistant')
+        && workspaceStoredUser?.contextSource === 'workspace'
+        && workspaceMarkerExcluded
+        && overlongMessageRejected
+        && !overlongProviderCalled
+        && longHistoryPreserved
         && latte?.text.includes('不怎么喜欢拿铁')
         && latte?.history?.length === 1
         && previousLatte?.evidenceTrail?.length === 2
@@ -5355,6 +5495,12 @@ async function runP0ChatFlowSmoke(outputPath) {
       stateMessages: after.messages.length,
       persistedMessages: storedSession?.messages?.length || 0,
       persistedUserMessage: storedSession?.messages?.some((message) => message.role === 'user' && message.content === '现在几点？') === true,
+      workspaceSessionId: workspaceReply.sessionId,
+      workspaceSourceMarked: workspaceStoredUser?.contextSource === 'workspace',
+      workspaceMarkerExcluded,
+      overlongMessageRejected,
+      overlongProviderSkipped: !overlongProviderCalled,
+      longHistoryPreserved,
       memoryCorrectionApplied: latte?.text.includes('不怎么喜欢拿铁') === true,
       evidenceTrailPreserved: previousLatte?.evidenceTrail?.length === 2,
       sameSourceDeduplicated: latte?.history?.length === 1,
@@ -5414,7 +5560,10 @@ windowManager = createWindowManager({
   defaultPosition,
   applyInvisibleOpacity: (...args) => applyInvisibleOpacity(...args),
   saveSettings,
-  onChatClosed: () => voiceService.stopRecognition(),
+  onChatClosed: (senderId) => {
+    chatRequestLifecycle.cancelSender(senderId, 'window_closed');
+    voiceService.stopRecognition();
+  },
   publicReminderState,
   reminderMenuLabel,
   cancelReminder,
@@ -5492,6 +5641,18 @@ function registerIpc() {
     mergeCommitments,
     extractExplicitMemories: extractExplicitMemoryCandidates,
     mergeCandidateMemories,
+    captureTurnState: () => structuredClone(memoryState),
+    restoreTurnState: (state) => { memoryState = state; },
+    saveTurnState: saveMemory,
+    afterTurnCommitted: ({ commitmentsChanged }) => {
+      broadcastSharedLifeState();
+      scheduleGirlfriendFollowUp();
+      if (commitmentsChanged) {
+        broadcastAssistantState();
+        scheduleProactiveGreeting(false, 60 * 1000);
+      }
+    },
+    onPostCommitNotificationError: (error) => console.error('Could not notify Chat turn commit:', error),
     broadcastLifeHubState,
     publicSessions,
     deliverReply: (reply) => {
@@ -5803,48 +5964,79 @@ function registerIpc() {
   });
 
   chatSendHandler = async (event, input) => {
+    assertProductDataWritable();
     const messages = Array.isArray(input) ? input : input?.messages;
     const voiceMode = !Array.isArray(input) && input?.voiceMode === true;
     const sessionId = String(
       (Array.isArray(input) ? memoryState.activeSessionId : input?.sessionId)
       || memoryState.activeSessionId
     );
-    const streamRequestId = voiceMode ? String(input?.requestId || '').slice(0, 80) : '';
-    const workspaceContextId = !Array.isArray(input) ? String(input?.workspaceContextId || '').slice(0, 160) : '';
-    const workspaceContext = workspaceContextId
-      ? workspaceCapabilityGateway.consumeContext(assertActiveChatWorkspaceSession(sessionId), workspaceContextId)
-      : null;
     const cleanMessages = sanitizeMessages(messages);
     const latestUserText = [...cleanMessages].reverse().find((message) => message.role === 'user')?.content || '';
-    const voiceProfile = voiceMode
-      ? describeVoiceProfile(latestUserText, input?.voiceProfile, input?.voiceProfile?.senseEmotion)
-      : null;
-    const onDelta = streamRequestId
-      ? (delta, accumulated) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('chat:voice-stream-delta', {
-              requestId: streamRequestId,
-              delta,
-              accumulated,
-              voiceProfile
-            });
-          }
-        }
-      : null;
-    return chatService.send({
-      messages: cleanMessages,
+    conversationState.assertCanAppendTurn(memoryState, {
       sessionId,
-      voiceMode,
-      voiceProfile,
-      onDelta,
-      workspaceContext,
-      diagnostic: createLlmDiagnostic('chat_response', 'ChatService.send'),
-      responseInstruction: voiceMode
-        ? `当前是实时语音交谈。reply 请使用适合自然说出口的简洁中文，通常 1—3 句话；避免 Markdown、项目符号、括号说明和过长铺垫，并自然承接用户刚说的话。用户本轮可参考的声音线索：${voiceProfile.description}。声音线索可能受麦克风影响，只把它作为语气参考，不要武断地给用户下结论。`
-        : ''
+      userMessage: latestUserText ? { content: latestUserText } : null
     });
+    const request = chatRequestLifecycle.begin({
+      sessionId,
+      senderId: event?.sender?.id
+    });
+    const streamRequestId = voiceMode ? String(input?.requestId || '').slice(0, 80) : '';
+    try {
+      request.assertCurrent();
+      const workspaceContextId = !Array.isArray(input) ? String(input?.workspaceContextId || '').slice(0, 160) : '';
+      const workspaceContext = workspaceContextId
+        ? workspaceCapabilityGateway.consumeContext(assertActiveChatWorkspaceSession(sessionId), workspaceContextId)
+        : null;
+      const voiceProfile = voiceMode
+        ? describeVoiceProfile(latestUserText, input?.voiceProfile, input?.voiceProfile?.senseEmotion)
+        : null;
+      const onDelta = streamRequestId
+        ? (delta, accumulated) => {
+            if (request.isCurrent() && !event.sender.isDestroyed()) {
+              event.sender.send('chat:voice-stream-delta', {
+                requestId: streamRequestId,
+                delta,
+                accumulated,
+                voiceProfile
+              });
+            }
+          }
+        : null;
+      return await chatService.send({
+        messages: cleanMessages,
+        sessionId,
+        requestId: request.requestId,
+        signal: request.controller.signal,
+        assertRequestCurrent: request.assertCurrent,
+        voiceMode,
+        voiceProfile,
+        onDelta,
+        workspaceContext,
+        diagnostic: createLlmDiagnostic('chat_response', 'ChatService.send'),
+        responseInstruction: voiceMode
+          ? `当前是实时语音交谈。reply 请使用适合自然说出口的简洁中文，通常 1—3 句话；避免 Markdown、项目符号、括号说明和过长铺垫，并自然承接用户刚说的话。用户本轮可参考的声音线索：${voiceProfile.description}。声音线索可能受麦克风影响，只把它作为语气参考，不要武断地给用户下结论。`
+          : ''
+      });
+    } catch (error) {
+      if (request.status === 'cancelled' || request.controller.signal.aborted) {
+        return {
+          cancelled: true,
+          requestId: request.requestId,
+          sessionId,
+          sessions: publicSessions()
+        };
+      }
+      throw error;
+    } finally {
+      request.finish();
+    }
   };
   ipcMain.handle('chat:send', chatSendHandler);
+
+  ipcMain.handle('chat:cancel-current-request', (event, sessionId) => ({
+    cancelled: chatRequestLifecycle.cancelSessionForSender(sessionId, event?.sender?.id, 'cancelled')
+  }));
 
   ipcMain.handle('chat:get-history', () => publicHistory());
 
@@ -6354,6 +6546,7 @@ if (!gotLock) {
   app.on('activate', () => showPet('hello'));
   app.on('before-quit', () => {
     quitting = true;
+    chatRequestLifecycle.cancelAll('app_quit');
     actionRuntimeManager?.cancelAll?.();
     clearTimeout(proactiveGreetingTimer);
     clearTimeout(girlfriendFollowUpTimer);

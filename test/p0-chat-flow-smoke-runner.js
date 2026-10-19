@@ -60,6 +60,11 @@ async function main() {
     assert.equal(result.runtimeMode, 'chat');
     assert.equal(result.localTimeAnswer, true);
     assert.equal(result.persistedUserMessage, true);
+    assert.equal(result.workspaceSourceMarked, true);
+    assert.equal(result.workspaceMarkerExcluded, true);
+    assert.equal(result.overlongMessageRejected, true);
+    assert.equal(result.overlongProviderSkipped, true);
+    assert.equal(result.longHistoryPreserved, true);
     assert.equal(result.stateMessages, 2);
     assert.equal(result.persistedMessages, 2);
     assert.equal(result.memoryCorrectionApplied, true);

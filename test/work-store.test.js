@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { WorkStore } = require('../work/work-store');
+const { WorkStore, normalizeWorkState } = require('../work/work-store');
 
 function withStore(callback) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mai-work-store-'));
@@ -207,4 +207,86 @@ test('WorkStore reports failed saves and rolls memory back to the last persisted
   assert.equal(store.getProject(project.id).name, '保留名称');
   assert.deepEqual(fs.readFileSync(filePath), savedBytes);
   assert.deepEqual(fs.readdirSync(path.dirname(filePath)), [path.basename(filePath)]);
+}));
+
+test('WorkStore loads, saves and normalizes records over new-write limits without truncation', () => withStore((filePath) => {
+  const projects = Array.from({ length: 102 }, (_, index) => ({
+    id: `project-${index}`,
+    name: `Project ${index}`
+  }));
+  const messages = Array.from({ length: 2003 }, (_, index) => ({
+    id: `message-${index}`,
+    role: index % 2 ? 'assistant' : 'user',
+    content: `content-${index}`
+  }));
+  const sessions = [{
+    id: 'session-0', projectId: 'project-0', title: '旧记录', messages
+  }];
+  fs.writeFileSync(filePath, JSON.stringify({ projects, sessions }), 'utf8');
+
+  const store = new WorkStore({ filePath });
+  assert.equal(store.load().projects.length, 102);
+  assert.equal(store.getSession('session-0').messages.length, 2003);
+  store.renameProject('project-0', '保存后仍保留旧记录');
+
+  const restored = new WorkStore({ filePath });
+  assert.equal(restored.load().projects.length, 102);
+  assert.equal(restored.getSession('session-0').messages.length, 2003);
+  assert.equal(restored.getSession('session-0').messages[0].id, 'message-0');
+  assert.equal(normalizeWorkState({ projects, sessions }).projects.length, 102);
+}));
+
+test('WorkStore preserves legacy message text beyond the limit for new messages', () => withStore((filePath) => {
+  const legacyText = `legacy-${'x'.repeat(15000)}`;
+  fs.writeFileSync(filePath, JSON.stringify({
+    projects: [{ id: 'project-1', name: 'P' }],
+    sessions: [{
+      id: 'session-1', projectId: 'project-1', title: '旧记录',
+      messages: [{ id: 'legacy-message', role: 'user', content: legacyText }]
+    }]
+  }), 'utf8');
+
+  const store = new WorkStore({ filePath });
+  store.load();
+  assert.equal(store.getSession('session-1').messages[0].content, legacyText);
+  store.renameSession('session-1', '保存历史正文');
+  const reloaded = new WorkStore({ filePath });
+  reloaded.load();
+  assert.equal(reloaded.getSession('session-1').messages[0].content, legacyText);
+
+  const project = reloaded.getProject('project-1');
+  const newSession = reloaded.createSession(project.id);
+  assert.throws(() => reloaded.appendMessage(newSession.id, {
+    role: 'user', content: 'x'.repeat(12001)
+  }), { code: 'WORK_MESSAGE_TOO_LARGE' });
+  assert.equal(reloaded.getSession(newSession.id).messages.length, 0);
+}));
+
+test('WorkStore rejects new records at capacity without deleting existing records', () => withStore((filePath) => {
+  const projects = Array.from({ length: 101 }, (_, index) => ({ id: `project-${index}`, name: `Project ${index}` }));
+  const sessions = Array.from({ length: 301 }, (_, index) => ({
+    id: `session-${index}`, projectId: 'project-0', title: `Session ${index}`, messages: []
+  }));
+  fs.writeFileSync(filePath, JSON.stringify({ projects, sessions }), 'utf8');
+  const store = new WorkStore({ filePath });
+  assert.equal(store.load().projects.length, 101);
+  assert.equal(store.sessionsForProject('project-0').length, 301);
+  assert.throws(() => store.createProject({ name: 'too many' }), /安全上限/);
+  assert.throws(() => store.createSession('project-0'), /安全上限/);
+  assert.equal(store.snapshot().projects.length, 101);
+  assert.equal(store.snapshot().sessions.length, 301);
+}));
+
+test('WorkStore reserves a complete turn before action execution reaches message capacity', () => withStore((filePath) => {
+  const store = new WorkStore({ filePath });
+  const project = store.createProject({ name: 'P' });
+  const session = store.createSession(project.id);
+  const current = store.state.sessions.find((item) => item.id === session.id);
+  current.messages = Array.from({ length: 1999 }, (_, index) => ({
+    id: `m-${index}`, role: index % 2 ? 'assistant' : 'user', content: 'x', createdAt: new Date().toISOString()
+  }));
+  store.save();
+
+  assert.throws(() => store.ensureCanAppendMessages(session.id, 2), { code: 'WORK_HISTORY_LIMIT_REACHED' });
+  assert.equal(store.getSession(session.id).messages.length, 1999);
 }));

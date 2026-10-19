@@ -113,6 +113,12 @@ function workspaceContextText(context) {
   return '';
 }
 
+function throwIfRequestAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw Object.assign(new Error('本轮聊天已取消。'), { code: 'CHAT_REQUEST_CANCELLED' });
+}
+
 class ChatRequestService {
   constructor(options = {}) {
     if (!options.modelGateway
@@ -164,6 +170,7 @@ class ChatRequestService {
     }
 
     const externalReality = await dependencies.realityContext();
+    throwIfRequestAborted(requestOptions.signal);
     let promptSections = [];
     const recordPromptSections = (sections) => {
       promptSections = Array.isArray(sections) ? sections : [];
@@ -200,18 +207,22 @@ class ChatRequestService {
 
     // Prompt construction can advance cached world/context state. Preserve the
     // existing write point before the external model request begins.
+    throwIfRequestAborted(requestOptions.signal);
     dependencies.saveContextState();
     const modelRequest = {
       messages: [{ role: 'system', content: systemPrompt }, ...cleanMessages],
       maxTokens,
       structured,
-      onDelta
+      onDelta,
+      signal: requestOptions.signal,
+      requestId: requestOptions.requestId
     };
     let response;
     try {
       response = onDelta
         ? await dependencies.modelGateway.stream(modelRequest)
         : await dependencies.modelGateway.generate(modelRequest);
+      throwIfRequestAborted(requestOptions.signal);
     } catch (error) {
       const providerFailure = providerFailureDiagnostic(error);
       if (typeof dependencies.recordLlmCacheDiagnostic === 'function') {
@@ -274,6 +285,7 @@ class ChatRequestService {
     if (!rawContent) {
       emitDiagnostic();
       if (fallback?.willFallback === true) {
+        throwIfRequestAborted(requestOptions.signal);
         return this.request(messages, {
           ...requestOptions,
           structured: false,

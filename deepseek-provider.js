@@ -128,10 +128,41 @@ function resolveModel(model) {
   return DEEPSEEK_MODELS.has(model) ? model : DEFAULT_MODEL;
 }
 
-async function readJsonSafely(response) {
+function abortError(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new ModelProviderError('request_cancelled', '模型请求已取消。');
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortError(signal);
+}
+
+function awaitWithSignal(value, signal) {
+  if (!signal) return Promise.resolve(value);
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', aborted);
+    const aborted = () => {
+      cleanup();
+      reject(abortError(signal));
+    };
+    signal.addEventListener('abort', aborted, { once: true });
+    Promise.resolve(value).then((result) => {
+      cleanup();
+      resolve(result);
+    }, (error) => {
+      cleanup();
+      reject(error);
+    });
+  });
+}
+
+async function readJsonSafely(response, signal) {
   try {
-    return await response.json();
-  } catch {
+    return await awaitWithSignal(response.json(), signal);
+  } catch (error) {
+    if (signal?.aborted) throw abortError(signal);
     return null;
   }
 }
@@ -208,7 +239,7 @@ class DeepSeekProvider {
       });
 
       if (!response?.ok) {
-        const data = await readJsonSafely(response);
+        const data = await readJsonSafely(response, controller.signal);
         const status = Number(response?.status) || 0;
         throw new ModelProviderError(
           errorCodeForStatus(status),
@@ -217,9 +248,9 @@ class DeepSeekProvider {
         );
       }
 
-      return stream
-        ? this.readStream(response, { ...options, model, httpStatus: Number(response.status) || null })
-        : this.readResponse(response, model, options.allowEmpty === true, Number(response.status) || null);
+      return await (stream
+        ? this.readStream(response, { ...options, signal: controller.signal, model, httpStatus: Number(response.status) || null })
+        : this.readResponse(response, model, options.allowEmpty === true, Number(response.status) || null, controller.signal));
     } catch (error) {
       if (externalSignal?.aborted) {
         if (externalSignal.reason instanceof Error) throw externalSignal.reason;
@@ -247,8 +278,8 @@ class DeepSeekProvider {
     }
   }
 
-  async readResponse(response, fallbackModel, allowEmpty = false, httpStatus = null) {
-    const data = await readJsonSafely(response);
+  async readResponse(response, fallbackModel, allowEmpty = false, httpStatus = null, signal = null) {
+    const data = await readJsonSafely(response, signal);
     const choice = data?.choices?.[0];
     if (!choice?.message) {
       if (allowEmpty) {
@@ -309,6 +340,7 @@ class DeepSeekProvider {
       finishReason = choice?.finish_reason || finishReason;
       const delta = extractMessageText(choice?.delta);
       if (!delta) return;
+      throwIfAborted(options.signal);
       contentEventCount += 1;
       rawContent += delta;
       const currentReply = extractStreamingReply(rawContent, options.structured !== false).text;
@@ -321,7 +353,9 @@ class DeepSeekProvider {
 
     const reader = response.body.getReader();
     while (true) {
-      const { done, value } = await reader.read();
+      throwIfAborted(options.signal);
+      const { done, value } = await awaitWithSignal(reader.read(), options.signal);
+      throwIfAborted(options.signal);
       if (done) break;
       parser.push(decoder.decode(value, { stream: true }));
     }

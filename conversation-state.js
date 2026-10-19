@@ -5,7 +5,7 @@ function normalizeActiveSessionId(sessions, requestedId) {
     : sessions[0]?.id || '';
 }
 
-function createConversationState({ createSession, sessionTitleFromMessages, maxSessions, maxMessages }) {
+function createConversationState({ createSession, sessionTitleFromMessages, maxSessions, maxMessages, maxMessageChars = 12000 }) {
   if (typeof createSession !== 'function' || typeof sessionTitleFromMessages !== 'function') {
     throw new Error('Conversation state requires session creation and title helpers.');
   }
@@ -22,6 +22,11 @@ function createConversationState({ createSession, sessionTitleFromMessages, maxS
     }
     const active = getSession(memoryState);
     if (active) return active;
+    if (memoryState.sessions.length >= maxSessions) {
+      throw Object.assign(new Error('聊天记录已达到安全上限，请先删除不再需要的历史对话。'), {
+        code: 'CHAT_SESSION_LIMIT_REACHED'
+      });
+    }
     const session = createSession();
     memoryState.sessions.unshift(session);
     memoryState.activeSessionId = session.id;
@@ -40,9 +45,13 @@ function createConversationState({ createSession, sessionTitleFromMessages, maxS
     if (current && current.messages.length === 0) {
       return { session: current, created: false };
     }
+    if (memoryState.sessions.length >= maxSessions) {
+      throw Object.assign(new Error('聊天记录已达到安全上限，请先删除不再需要的历史对话。'), {
+        code: 'CHAT_SESSION_LIMIT_REACHED'
+      });
+    }
     const session = createSession();
     memoryState.sessions.unshift(session);
-    memoryState.sessions = memoryState.sessions.slice(0, maxSessions);
     memoryState.activeSessionId = session.id;
     return { session, created: true };
   }
@@ -72,8 +81,33 @@ function createConversationState({ createSession, sessionTitleFromMessages, maxS
     return session;
   }
 
+  function assertCanAppendTurn(memoryState, { sessionId, userMessage, assistantMessage }) {
+    const session = getSession(memoryState, String(sessionId || memoryState.activeSessionId || ''));
+    if (!session) {
+      throw Object.assign(new Error('这段聊天已不存在，请重新选择历史对话后再发送。'), {
+        code: 'CHAT_SESSION_UNAVAILABLE'
+      });
+    }
+    const previous = session.messages[session.messages.length - 1];
+    const appendsUser = Boolean(userMessage?.content)
+      && !(previous?.role === 'user' && previous.content === userMessage.content);
+    if (session.messages.length + (appendsUser ? 2 : 1) > maxMessages) {
+      throw Object.assign(new Error('这段聊天已达到单段安全上限。请新建一段对话后继续，原有历史会完整保留。'), {
+        code: 'CHAT_HISTORY_LIMIT_REACHED'
+      });
+    }
+    if ([userMessage, assistantMessage].some((message) => (
+      typeof message?.content === 'string' && message.content.length > maxMessageChars
+    ))) {
+      throw Object.assign(new Error('单条聊天消息过长，请缩短后重试；本轮尚未提交。'), {
+        code: 'CHAT_MESSAGE_TOO_LARGE'
+      });
+    }
+    return session;
+  }
+
   function appendConversationTurn(memoryState, { sessionId, userMessage, assistantMessage, updatedAt }) {
-    const session = ensureActiveSession(memoryState, sessionId);
+    const session = assertCanAppendTurn(memoryState, { sessionId, userMessage, assistantMessage });
     const previous = session.messages[session.messages.length - 1];
     let storedUserMessage = null;
     if (userMessage?.content && !(previous?.role === 'user' && previous.content === userMessage.content)) {
@@ -83,20 +117,32 @@ function createConversationState({ createSession, sessionTitleFromMessages, maxS
       storedUserMessage = previous;
     }
     session.messages.push(assistantMessage);
-    session.messages = session.messages.slice(-maxMessages);
     session.title = sessionTitleFromMessages(session.messages);
     session.updatedAt = updatedAt;
-    memoryState.activeSessionId = session.id;
     memoryState.sessions = memoryState.sessions
-      .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
-      .slice(0, maxSessions);
+      .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
     return { session, storedUserMessage };
   }
 
   function appendProactiveMessage(memoryState, { sessionId, message, updatedAt }) {
-    const session = getSession(memoryState, sessionId) || ensureActiveSession(memoryState);
+    const targetId = String(sessionId || memoryState.activeSessionId || '');
+    const session = targetId ? getSession(memoryState, targetId) : ensureActiveSession(memoryState);
+    if (!session) {
+      throw Object.assign(new Error('主动消息对应的聊天已不存在，消息没有写入其他会话。'), {
+        code: 'CHAT_SESSION_UNAVAILABLE'
+      });
+    }
+    if (session.messages.length >= maxMessages) {
+      throw Object.assign(new Error('这段聊天已达到单段安全上限，主动消息没有写入。'), {
+        code: 'CHAT_HISTORY_LIMIT_REACHED'
+      });
+    }
+    if (typeof message?.content === 'string' && message.content.length > maxMessageChars) {
+      throw Object.assign(new Error('主动消息过长，没有写入聊天记录。'), {
+        code: 'CHAT_MESSAGE_TOO_LARGE'
+      });
+    }
     session.messages.push(message);
-    session.messages = session.messages.slice(-maxMessages);
     session.updatedAt = updatedAt;
     return session;
   }
@@ -105,6 +151,7 @@ function createConversationState({ createSession, sessionTitleFromMessages, maxS
     activateSession,
     appendConversationTurn,
     appendProactiveMessage,
+    assertCanAppendTurn,
     clearSessions,
     createNewSession,
     deleteSession,
