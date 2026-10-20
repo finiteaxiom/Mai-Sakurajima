@@ -36,6 +36,8 @@
       "file-set-transaction.js",
       "api-key-storage.js",
       "chat-turn-state.js",
+      "chat-prompt-context.js",
+      "chat-reality-context.js",
       "agent/**/*",
       "work/**/*",
       "companion-state.js",

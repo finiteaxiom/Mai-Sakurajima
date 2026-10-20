@@ -30,10 +30,10 @@ Renderer chat:send
        -> runChatRuntime
             ├─ directLocalTimeReply（确定性现实时间回答）
             └─ ChatRequestService.request
-                 -> realityContext（按设置读取/刷新天气）
-                 -> buildSystemPrompt
+                 -> realityContext（准备按设置读取/刷新的天气上下文）
+                 -> renderSystemPrompt（只读生成 Prompt 与状态变更计划）
                  -> context budget trim
-                 -> 检查请求仍有效
+                 -> 检查请求仍有效并提交最终 Prompt / 现实上下文状态
                  -> saveContextState
                  -> ModelGateway.generate / stream
                  -> selected Provider.complete
@@ -89,7 +89,7 @@ Chat 历史列表显示所有有效会话，包括空的命名会话；侧栏只
 
 `behaviorPatterns` 的基础人格规则与本轮选中的行为线索由不同函数拼接；两者文本和选中条件保持不变。只有选中的线索会进入动态区段，因此不会让每轮不同的检索结果破坏前面的稳定系统指令。
 
-Prompt 构建会推进部分可持久化上下文，例如 world、facts 的 retrieval metadata 和 episode recall metadata，因此 `ChatRequestService` 在外部模型请求开始前调用既有 `saveContextState()`。消息超出预算时先裁剪，再以裁剪后的消息重新构造 Prompt。
+`chat-prompt-context.js` 与 `chat-reality-context.js` 在准备阶段只生成 Prompt、上下文和待提交计划，不直接改变持久状态。消息超出预算时先裁剪，再以裁剪后的消息重新构造 Prompt；`ChatRequestService` 只提交最终一次 Prompt 对应的 world、事实检索与 episode recall 元数据，以及仍与当前设置和请求匹配的天气结果。提交前会再次检查取消、会话和数据代次；通过后才调用 `saveContextState()`，再发起模型请求。保存失败会阻止模型请求并由 Main 的保存边界恢复内存快照。
 
 默认 structured 回复包含 `reply`、桌宠 `action` / `emotion`，以及受严格证据约束的 memories、episodes、topics、people、projects、habits、commitments 和 `mind` 候选。`reply`（兼容 `content`、`message`、`answer`、`text`）是唯一 Critical 字段；动作、情绪和所有候选集合均可本地降级为既有默认值或空集合，不能单独造成重发。启用 `response_format: { type: 'json_object' }` 时，structured contract 只允许 JSON object：没有候选更新时使用空数组 / 空 `mind`，仍须给出非空 `reply`，不得要求模型改回普通文本。
 

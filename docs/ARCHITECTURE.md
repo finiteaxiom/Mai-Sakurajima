@@ -50,7 +50,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | Renderer Chat turn 投影 | `renderer/chat-turn-coordinator.js` 管理当前视图 turn token、session/view generation、乐观消息与 pending 清理、取消确认和 Voice 流订阅释放；同 session 完整 hydration 也会废弃旧投影 | Main 请求 AbortController、Provider、持久化与结构化状态候选 |
 | Chat 请求生命周期 | Main 通过 `chat-request-lifecycle.js` 为 Chat 与主动请求绑定 requestId、session、sender 和取消信号；取消在会话切换、删除、窗口关闭、恢复和退出时生效 | Renderer 请求不能直接拥有 AbortController 或放宽持久化策略 |
 | Chat 编排 | `chat-service.js` 协调一轮消息与副作用；`chat-turn-state.js` 分开追加会话记录和消费普通 Chat 的结构化状态候选 | Prompt 组装、供应商协议 |
-| Chat 请求 | `chat-request-service.js` 构造请求、控制上下文预算、执行普通/流式请求并解析结果 | 会话持久化、生活数据更新 |
+| Chat 请求与上下文 | `chat-request-service.js` 控制上下文预算、执行普通/流式请求并解析结果；`chat-prompt-context.js` 只读生成 Prompt 与状态变更计划，`chat-reality-context.js` 准备可验证提交的现实上下文 | 会话持久化、生活数据更新；只有 Main 确认请求仍有效后才提交最终上下文计划 |
 | 模型访问 | `model-gateway.js`、`model-provider-registry.js`、`deepseek-provider.js`、`local-model-provider.js` | Memory、Renderer、工具调用 |
 | Work 产品与执行 | `work/work-store.js` 拥有 Project/WorkSession 持久化；`action-ipc.js` 连接产品域与执行上下文；`agent/action-runtime-manager.js`、`mai-agent-runtime.js`、`agent-loop.js`、`agent-task-state.js`、`deepseek-agent-adapter.js`、`tool-orchestrator.js`、`workspace-file-service.js`、`workspace-sandbox.js`、`workspace-tools.js`、`word-document-service.js`、`action-session.js` 负责单次执行 | ChatService、Memory、Persona、Chat ModelGateway、Shell 或系统执行能力 |
 | 会话状态 | `conversation-state.js` 负责 sessions、active session、创建/选择/删除/重命名和追加消息的正常 mutation | 保存、广播、Prompt、模型请求 |

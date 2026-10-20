@@ -119,6 +119,13 @@ function throwIfRequestAborted(signal) {
   throw Object.assign(new Error('本轮聊天已取消。'), { code: 'CHAT_REQUEST_CANCELLED' });
 }
 
+function assertRequestCurrent(requestOptions = {}) {
+  throwIfRequestAborted(requestOptions.signal);
+  if (typeof requestOptions.assertRequestCurrent === 'function') {
+    requestOptions.assertRequestCurrent();
+  }
+}
+
 class ChatRequestService {
   constructor(options = {}) {
     if (!options.modelGateway
@@ -169,21 +176,45 @@ class ChatRequestService {
       throw new Error('请输入想和麻衣说的话。');
     }
 
-    const externalReality = await dependencies.realityContext();
-    throwIfRequestAborted(requestOptions.signal);
+    const realityContext = await dependencies.realityContext(requestOptions);
+    assertRequestCurrent(requestOptions);
+    if (typeof realityContext?.isCurrent === 'function' && !realityContext.isCurrent()) {
+      throw Object.assign(new Error('本轮现实上下文已过期，请重试。'), {
+        code: 'CHAT_CONTEXT_STATE_STALE'
+      });
+    }
+    const externalReality = typeof realityContext === 'string'
+      ? realityContext
+      : String(realityContext?.text || '');
     let promptSections = [];
-    const recordPromptSections = (sections) => {
-      promptSections = Array.isArray(sections) ? sections : [];
+    const renderPrompt = (promptMessages) => {
+      if (typeof dependencies.renderSystemPrompt === 'function') {
+        const rendered = dependencies.renderSystemPrompt(
+          structured,
+          promptMessages,
+          externalReality,
+          responseInstruction,
+          requestOptions.sessionId,
+          workspaceContext
+        );
+        promptSections = Array.isArray(rendered?.sections) ? rendered.sections : [];
+        return rendered;
+      }
+      const renderedSections = [];
+      const text = dependencies.buildSystemPrompt(
+        structured,
+        promptMessages,
+        externalReality,
+        responseInstruction,
+        requestOptions.sessionId,
+        (sections) => { renderedSections.push(...(Array.isArray(sections) ? sections : [])); },
+        workspaceContext
+      );
+      promptSections = renderedSections;
+      return { text, sections: renderedSections, contextMutation: null };
     };
-    let systemPrompt = dependencies.buildSystemPrompt(
-      structured,
-      cleanMessages,
-      externalReality,
-      responseInstruction,
-      requestOptions.sessionId,
-      recordPromptSections,
-      workspaceContext
-    );
+    let renderedPrompt = renderPrompt(cleanMessages);
+    let systemPrompt = renderedPrompt.text;
     const availableMessageTokens = Math.max(
       50000,
       this.maxPromptTokens - dependencies.estimateTokenCount(systemPrompt) - maxTokens - 2000
@@ -194,20 +225,28 @@ class ChatRequestService {
         messageLimit: this.maxContextMessages,
         maxMessageTokens: 16000
       });
-      systemPrompt = dependencies.buildSystemPrompt(
-        structured,
-        cleanMessages,
-        externalReality,
-        responseInstruction,
-        requestOptions.sessionId,
-        recordPromptSections,
-        workspaceContext
-      );
+      renderedPrompt = renderPrompt(cleanMessages);
+      systemPrompt = renderedPrompt.text;
     }
 
-    // Prompt construction can advance cached world/context state. Preserve the
-    // existing write point before the external model request begins.
-    throwIfRequestAborted(requestOptions.signal);
+    // Prompt rendering is read-only. Commit only the final render (after any
+    // message-budget rebuild) together with eligible reality cache changes.
+    assertRequestCurrent(requestOptions);
+    if (typeof realityContext?.isCurrent === 'function' && !realityContext.isCurrent()) {
+      throw Object.assign(new Error('本轮现实上下文已过期，请重试。'), {
+        code: 'CHAT_CONTEXT_STATE_STALE'
+      });
+    }
+    if (realityContext && typeof realityContext === 'object'
+      && typeof dependencies.commitRealityContext === 'function'
+      && !dependencies.commitRealityContext(realityContext, requestOptions)) {
+      throw Object.assign(new Error('本轮现实上下文已过期，请重试。'), {
+        code: 'CHAT_CONTEXT_STATE_STALE'
+      });
+    }
+    if (renderedPrompt.contextMutation && typeof dependencies.commitRenderedPromptContext === 'function') {
+      dependencies.commitRenderedPromptContext(renderedPrompt.contextMutation);
+    }
     dependencies.saveContextState();
     const modelRequest = {
       messages: [{ role: 'system', content: systemPrompt }, ...cleanMessages],
@@ -285,7 +324,7 @@ class ChatRequestService {
     if (!rawContent) {
       emitDiagnostic();
       if (fallback?.willFallback === true) {
-        throwIfRequestAborted(requestOptions.signal);
+        assertRequestCurrent(requestOptions);
         return this.request(messages, {
           ...requestOptions,
           structured: false,

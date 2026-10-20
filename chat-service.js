@@ -54,6 +54,7 @@ class ChatService {
         sessionId: options.sessionId,
         requestId: options.requestId,
         signal: options.signal,
+        assertRequestCurrent: options.assertRequestCurrent,
         onDelta: typeof options.onDelta === 'function' ? options.onDelta : null,
         responseInstruction: String(options.responseInstruction || '').slice(0, 1200),
         diagnostic: options.diagnostic,

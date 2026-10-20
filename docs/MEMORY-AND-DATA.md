@@ -93,7 +93,7 @@ Chat 新写入最多 200 段会话，每段最多新增到 2000 条消息，单�
 | `projects`、`habits`、`continuityMeta` | `continuity-engine.js` | Chat 候选合并、连续性维护、手动 IPC、同步 |
 | `lifeItems` | `intelligence.js` 的事项规范化与 Main 编排 | 手动 CRUD、Chat commitments、提醒与 assistant Promise 联动 |
 | `moments`、`momentsMeta` | `moments.js` | 手动/自动发帖、评论、排程 |
-| `behaviorPatterns`、`world`、`reality.weather` | `intelligence.js`、`world-engine.js` | Chat 后处理、Prompt 上下文推进、设置/天气刷新 |
+| `behaviorPatterns`、`world`、`reality.weather` | `intelligence.js`、`world-engine.js`、`chat-prompt-context.js`、`chat-reality-context.js` | Chat 后处理；Prompt 与现实上下文先只读准备，再由仍有效的最终请求提交；设置或显式天气刷新 |
 
 这张表描述的是当前事实，不是重构待办。若未来要收束某个子域，必须先盘点 writer、建立契约测试，并避免把 save/broadcast/scheduling 混入纯状态模块。
 

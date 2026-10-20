@@ -31,6 +31,7 @@ async function main() {
         cwd: projectRoot,
         env: {
           ...process.env,
+          MAI_EXPECTED_USER_DATA_DIR: testRoot,
           MAI_P0_CHAT_SMOKE: '1',
           MAI_P0_CHAT_SMOKE_OUTPUT: outputPath
         },

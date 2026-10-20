@@ -72,6 +72,7 @@ function runMigration(directory, options = {}) {
       cwd: projectRoot,
       env: {
         ...process.env,
+        MAI_EXPECTED_USER_DATA_DIR: directory,
         MAI_MIGRATION_SMOKE: '1',
         MAI_MIGRATION_BACKUP_FAILURE_SMOKE: options.expectBackupFailure ? '1' : '',
         MAI_MIGRATION_BACKUP_FAILURE_OUTPUT: options.outputPath || ''

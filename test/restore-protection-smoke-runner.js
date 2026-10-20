@@ -31,6 +31,7 @@ function runElectron(mode, outputPath) {
     windowsHide: false,
     env: {
       ...process.env,
+      MAI_EXPECTED_USER_DATA_DIR: userData,
       MAI_RESTORE_PROTECTION_SMOKE: mode === 'protection' ? '1' : '',
       MAI_RESTORE_PROTECTION_OUTPUT: mode === 'protection' ? outputPath : '',
       MAI_RESTORE_PROTECTION_BACKUP: mode === 'protection' ? backupPath : '',
