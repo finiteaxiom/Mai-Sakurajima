@@ -30,6 +30,69 @@ test('DeepSeekAgentAdapter preserves cancellation and normalizes provider errors
   await assert.rejects(run, (error) => error === reason);
 });
 
+test('DeepSeekAgentAdapter stops waiting for a response body that ignores cancellation', async () => {
+  let markBodyStarted;
+  let releaseBody;
+  const bodyStarted = new Promise((resolve) => { markBodyStarted = resolve; });
+  const bodyGate = new Promise((resolve) => { releaseBody = resolve; });
+  const adapter = new DeepSeekAgentAdapter({
+    getApiKey: () => 'synthetic-test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json() {
+        markBodyStarted();
+        return bodyGate;
+      }
+    })
+  });
+  const controller = new AbortController();
+  const reason = Object.assign(new Error('stop body read'), { code: 'action_cancelled' });
+  const run = adapter.runRound({ messages: [{ role: 'user', content: 'synthetic body cancellation' }] }, { signal: controller.signal });
+  await bodyStarted;
+  controller.abort(reason);
+  await assert.rejects(run, (error) => error === reason);
+  releaseBody({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'late body result' } }] });
+});
+
+test('DeepSeekAgentAdapter does not start pre-cancelled work or leak a synchronous abort rejection', async () => {
+  const reason = Object.assign(new Error('stop before request'), { code: 'action_cancelled' });
+  const preCancelled = new AbortController();
+  preCancelled.abort(reason);
+  let preCancelledFetchCount = 0;
+  const preCancelledAdapter = new DeepSeekAgentAdapter({
+    getApiKey: () => 'synthetic-test-key',
+    fetchImpl: () => { preCancelledFetchCount += 1; return Promise.reject(new Error('request should not start')); }
+  });
+  await assert.rejects(
+    preCancelledAdapter.runRound({ messages: [{ role: 'user', content: 'synthetic pre-cancel' }] }, { signal: preCancelled.signal }),
+    (error) => error === reason
+  );
+  assert.equal(preCancelledFetchCount, 0);
+
+  const controller = new AbortController();
+  const unhandled = [];
+  const onUnhandledRejection = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandledRejection);
+  try {
+    const adapter = new DeepSeekAgentAdapter({
+      getApiKey: () => 'synthetic-test-key',
+      fetchImpl: () => {
+        controller.abort(reason);
+        return Promise.reject(new Error('late fetch rejection'));
+      }
+    });
+    await assert.rejects(
+      adapter.runRound({ messages: [{ role: 'user', content: 'synthetic abort during fetch start' }] }, { signal: controller.signal }),
+      (error) => error === reason
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandledRejection);
+  }
+});
+
 test('DeepSeekAgentAdapter sends the capability-filtered Workspace tool schema unchanged', async () => {
   const requests = [];
   const tools = createWorkspaceAgentToolRegistry({ getWorkspacePath: () => 'C:\\workspace' })

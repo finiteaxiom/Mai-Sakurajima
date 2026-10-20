@@ -222,8 +222,8 @@ test('late auto-read failures use the captured view identity after the turn rele
     },
     conversation: [],
     chatConfig: { configured: true, memoryEnabled: false },
+    selectedRuntimeMode: 'chat',
     messageInput: { value: '第一条消息', disabled: false },
-    sending: false,
     MAX_RENDER_CONTEXT_MESSAGES: 100,
     activeChatSessionId: () => sandbox.chatTurnCoordinator.getState().sessionId,
     addMessage(role, content) {
@@ -255,7 +255,6 @@ test('late auto-read failures use the captured view identity after the turn rele
   const coordinator = createChatTurnCoordinator({
     api: sandbox.api,
     onStateChange: (state) => {
-      sandbox.sending = state.busy;
       sandbox.messageInput.disabled = state.busy;
     },
     onApplyChatState: (state) => { sandbox.conversation = state.messages || []; }

@@ -21,13 +21,19 @@ Work Store 只保存用户消息、最终 Work 回复、执行状态和简短工
 
 Renderer 每次启动固定进入 Chat，不再读取 `mai-runtime-mode` 作为启动偏好。上次打开的 Project 可保留为 Work 内部偏好，只有用户主动切换到 Work 后才加载。
 
+## Renderer 工作区投影
+
+`renderer/work-renderer-controller.js` 管理 Work 页面投影与异步请求身份，身份包含当前模式、视图代次、Project、WorkSession 和 Workspace 路径。它只把 `agent:*` 返回的状态与 `agent:event` 事件显示到当前视图，不拥有 task 状态或取消控制权；任务仍由 Main 的 `ActionRuntimeManager` 和 `AgentRunCoordinator` 管理。模式、Project、WorkSession 或 Workspace 改变后，旧的配置、选择、刷新、执行和错误回调会被丢弃。ActionSession 与 Agent event 订阅在 Renderer 页面释放时注销。
+
+`renderer/workspace-explorer-controller.js` 为每个相对目录分别跟踪加载请求，允许互不相关的目录并行加载。刷新会按当前展开目录恢复列表，但只有完整身份仍匹配时才恢复旧选择。预览成功、失败及收尾更新都校验 Project、Workspace、WorkSession、视图代次和相对路径；切换身份后，旧请求不会改变新 Workspace 的选择或预览。缓存只服务于当前 Project Workspace，窗口重新聚焦时标记为可能过期，用户可手动刷新。
+
 正式 Work 由 `agent/production-action-runtime.js` 组合：它只注册 `MaiAgentRuntime`，并显式注入 `DeepSeekAgentAdapter`。早期设置中遗留的 `agent.runtime: "mock"` 会在加载和运行时规范化为 `mai-agent`；`MockActionRuntime` 与 `FakeAgentModelAdapter` 只能由测试显式构造，绝不会作为正式 Work 的 fallback。若 DeepSeek Key、模型适配器或工具链不可用，任务进入失败状态并返回明确错误，不得伪造完成结果。
 
 ## 生命周期、事件与取消
 
 `AgentTaskState` 是唯一的任务状态 owner。它只允许 `created -> running -> waiting_user -> running`，并只可从运行或等待状态进入 `completed`、`failed`、`cancelled`；终态不可变。`AgentEventStream` 是 Renderer 的事实来源，事件经 `agent:event` 投影到 Work Inspector 的可见运行详情；它不再作为对话输入框上方的常驻事件面板。
 
-取消链为 `agent:cancel` / 窗口关闭 / app quit -> ActionRuntimeManager -> MaiAgentRuntime -> AgentRunCoordinator -> AbortSignal -> model、审批等待和工具执行`。轮次、工具调用、工具失败及总超时均 fail closed。
+取消链为 `agent:cancel` / 窗口关闭 / app quit -> ActionRuntimeManager -> MaiAgentRuntime -> AgentRunCoordinator -> AbortSignal -> model 请求、响应体读取、审批等待和工具执行`。等待中的模型请求与响应体可被中止；即使适配器在取消后返回迟到结果，AgentLoop 也会在消费结果前丢弃它，并只发出一个任务终态。轮次、工具调用、工具失败及总超时均 fail closed。
 
 ## 已启用工具与授权
 

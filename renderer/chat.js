@@ -419,7 +419,6 @@ const momentRepliesInFlight = new Set();
 let runtimeSessions = [];
 let chatWorkspaceStatus = { granted: false, operations: [] };
 let pendingWorkspaceRequest = null;
-let sending = false;
 let activeAvatarTarget = null;
 let portraitReactionTimer = null;
 let voiceCapabilities = {
@@ -444,7 +443,10 @@ let callMicrophoneMonitor = null;
 let inputDialogState = null;
 let conversationContextSessionId = '';
 let conversationContextKind = 'chat';
+let conversationContextWorkIdentity = null;
+let conversationContextWorkProjectId = '';
 let selectedRuntimeMode = 'chat';
+let runtimeModeGeneration = 0;
 let actionRuntimeStatus = { enabled: false, available: false, reason: '' };
 let activeActionSessionId = '';
 let actionEvents = [];
@@ -458,10 +460,8 @@ let workspaceExplorerListings = new Map();
 let workspaceExplorerExpanded = new Set(['']);
 let workspaceExplorerSelection = null;
 let workspaceExplorerLoading = false;
-let workspaceExplorerRequestId = 0;
 let workspaceExplorerMayBeStale = false;
 let workspacePreview = null;
-let workspacePreviewRequestId = 0;
 
 function activeChatSessionId() {
   return chatTurnCoordinator.getState().sessionId;
@@ -469,7 +469,6 @@ function activeChatSessionId() {
 
 function updateChatTurnControls(state) {
   if (!state || state.disposed || selectedRuntimeMode === 'agent') return;
-  sending = state.busy;
   messageInput.disabled = state.busy;
   sendButton.disabled = state.cancellationPending;
   sendButton.textContent = state.cancellationPending ? '取消中…' : state.activeTurnToken ? '停止' : '发送';
@@ -487,6 +486,34 @@ const chatTurnCoordinator = window.MaiChatTurnCoordinator.createChatTurnCoordina
     renderHistory();
     renderCompanionWorkspace();
   }
+});
+
+const workRendererBindings = window.MaiWorkRendererBindings.createWorkRendererBindings({
+  api,
+  onWorkStateChange: (state) => {
+    actionRuntimeStatus = state.runtimeStatus;
+    activeActionSessionId = state.activeActionSessionId;
+    actionEvents = state.events;
+    workProjects = state.projects;
+    allWorkSessions = state.sessions;
+    activeWorkProjectId = state.projectId;
+    activeWorkSessionId = state.workSessionId;
+    workSessions = state.sessions.filter((session) => session.projectId === state.projectId);
+    if (selectedRuntimeMode === 'agent' && state.mode === 'agent') renderActionWorkspace();
+  },
+  onExplorerStateChange: (state) => {
+    workspaceExplorerProjectId = state.identity?.projectId || '';
+    workspaceExplorerListings = state.listings;
+    workspaceExplorerExpanded = state.expanded;
+    workspaceExplorerSelection = state.selection;
+    workspaceExplorerLoading = state.loading;
+    workspaceExplorerMayBeStale = state.mayBeStale;
+    workspacePreview = state.preview;
+    if (selectedRuntimeMode === 'agent' && state.identity?.mode === 'agent') renderWorkspaceExplorer();
+  },
+  onNotice: (error) => showNotice(errorText(error)),
+  onBusySelection: () => showNotice('请等待当前行动结束。'),
+  onActionResult: (response) => showNotice(response?.presentation?.content || '这次行动没有完成。')
 });
 
 function setCapabilityChips(labels) {
@@ -556,9 +583,13 @@ async function refreshChatWorkspaceCapability() {
 
 async function selectChatWorkspaceCapability() {
   const sessionId = activeChatSessionId();
+  const modeGeneration = runtimeModeGeneration;
+  const chatView = chatTurnCoordinator.getState();
   try {
     const result = await api.selectChatWorkspaceCapability({ sessionId });
-    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return;
+    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId
+      || selectedRuntimeMode !== 'chat' || runtimeModeGeneration !== modeGeneration
+      || !chatTurnCoordinator.isViewCurrent(chatView)) return;
     if (!result?.ok) throw new Error(workspaceErrorText(result));
     chatWorkspaceStatus = result.status || chatWorkspaceStatus;
     renderChatWorkspaceCapability();
@@ -569,7 +600,9 @@ async function selectChatWorkspaceCapability() {
       await sendWorkspaceIntent(pending.content, pending.intent);
     }
   } catch (error) {
-    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId) showNotice(errorText(error));
+    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId
+      && selectedRuntimeMode === 'chat' && runtimeModeGeneration === modeGeneration
+      && chatTurnCoordinator.isViewCurrent(chatView)) showNotice(errorText(error));
   }
 }
 
@@ -718,6 +751,8 @@ function submitInputDialog() {
 
 function closeConversationContextMenu() {
   conversationContextSessionId = '';
+  conversationContextWorkIdentity = null;
+  conversationContextWorkProjectId = '';
   conversationContextMenu.classList.add('conversation-context-menu--hidden');
 }
 
@@ -726,6 +761,8 @@ function openConversationContextMenu(event, session, kind = 'chat') {
   event.stopPropagation();
   conversationContextSessionId = String(session?.id || '');
   conversationContextKind = kind === 'work' ? 'work' : 'chat';
+  conversationContextWorkIdentity = conversationContextKind === 'work' ? workRendererBindings.getIdentity() : null;
+  conversationContextWorkProjectId = conversationContextKind === 'work' ? String(session?.projectId || '') : '';
   if (!conversationContextSessionId) return;
 
   const fallback = '这段对话';
@@ -747,13 +784,15 @@ function openConversationContextMenu(event, session, kind = 'chat') {
 }
 
 function conversationContextSession() {
-  const sessions = conversationContextKind === 'work' ? workSessions : runtimeSessions;
+  const sessions = conversationContextKind === 'work' ? allWorkSessions : runtimeSessions;
   return sessions.find((session) => session.id === conversationContextSessionId) || null;
 }
 
-async function renameConversationSession(session) {
+async function renameConversationSession(session, kind = 'chat', workIdentity = null, targetWorkProjectId = '') {
   if (!session) return false;
-  const workSession = conversationContextKind === 'work';
+  const workSession = kind === 'work';
+  const workProjectId = workSession ? String(targetWorkProjectId || session.projectId || '') : '';
+  if (workSession && (!workProjectId || !workIdentity || !workRendererBindings.isViewCurrent(workIdentity))) return false;
   const values = await openInputDialog({
     title: workSession ? '重命名 Work 对话' : '重命名对话',
     description: workSession ? '名称会显示在当前项目的工作记录中。' : '名称会同步显示在最近对话与聊天历史中。',
@@ -768,31 +807,37 @@ async function renameConversationSession(session) {
   if (!values || values.title === session.title) return false;
   try {
     if (workSession) {
-      await api.renameWorkSession({ workSessionId: session.id, projectId: activeWorkProjectId, title: values.title });
-      await refreshWorkData();
+      if (!workRendererBindings.isViewCurrent(workIdentity)) return false;
+      const renamed = await workRendererBindings.renameSession(workProjectId, session.id, values.title, workIdentity);
+      if (!renamed || !workRendererBindings.isViewCurrent(workIdentity)) return false;
     } else {
       applyChatState(await api.renameChatSession(session.id, values.title));
     }
+    if (workSession && !workRendererBindings.isViewCurrent(workIdentity)) return false;
     showNotice('对话名称已更新。');
     return true;
   } catch (error) {
+    if (workSession && !workRendererBindings.isViewCurrent(workIdentity)) return false;
     showNotice(errorText(error));
     return false;
   }
 }
 
-async function deleteConversationSession(session) {
+async function deleteConversationSession(session, kind = 'chat', workIdentity = null, targetWorkProjectId = '') {
   if (!session) return false;
-  const workSession = conversationContextKind === 'work';
+  const workSession = kind === 'work';
+  const workProjectId = workSession ? String(targetWorkProjectId || session.projectId || '') : '';
+  if (workSession && (!workProjectId || !workIdentity || !workRendererBindings.isViewCurrent(workIdentity))) return false;
   const detail = workSession ? '此操作只删除当前项目中的工作记录，不会删除项目或 Workspace。' : '长期记忆不会受影响。';
   if (!window.confirm(`确定删除“${session.title || '这段对话'}”吗？${detail}`)) {
     return false;
   }
   try {
     if (workSession) {
-      await api.deleteWorkSession({ workSessionId: session.id, projectId: activeWorkProjectId });
-      if (activeWorkSessionId === session.id) activeWorkSessionId = '';
-      await refreshWorkData();
+      if (!workRendererBindings.isViewCurrent(workIdentity)) return false;
+      const deleted = await workRendererBindings.deleteSession(workProjectId, session.id, workIdentity);
+      const current = workRendererBindings.getIdentity();
+      if (!deleted || current.mode !== 'agent' || current.projectId !== workIdentity.projectId) return false;
       showNotice('这条 Work 记录已删除。');
     } else {
       applyChatState(await api.deleteChatSession(session.id));
@@ -800,6 +845,7 @@ async function deleteConversationSession(session) {
     }
     return true;
   } catch (error) {
+    if (workSession && !workRendererBindings.isViewCurrent(workIdentity)) return false;
     showNotice(errorText(error));
     return false;
   }
@@ -2177,7 +2223,7 @@ async function startVoiceInput() {
     await api.stopVoiceListening();
     return;
   }
-  if (sending) {
+  if (chatTurnCoordinator.getState().busy) {
     showNotice('请先等待当前回复结束。');
     return;
   }
@@ -2376,7 +2422,7 @@ async function runVoiceCall(generation) {
 }
 
 async function startVoiceCall() {
-  if (voiceCallActive || sending) {
+  if (voiceCallActive || chatTurnCoordinator.getState().busy) {
     return;
   }
   if (!chatConfig.configured) {
@@ -2786,7 +2832,7 @@ function renderCompanionWorkspace() {
   sendButton.textContent = turnState.cancellationPending ? '取消中…' : chatTurnPending ? '停止' : '发送';
   sendButton.setAttribute('aria-label', turnState.cancellationPending ? '正在取消当前回复' : chatTurnPending ? '停止当前回复' : '发送');
   voiceInputButton.hidden = false;
-  messageInput.disabled = sending;
+  messageInput.disabled = turnState.busy;
   sendButton.disabled = turnState.cancellationPending;
   const activeSession = runtimeSessions.find((session) => session.id === activeChatSessionId());
   const title = activeSession?.title || '新对话';
@@ -2803,10 +2849,16 @@ function renderCompanionWorkspace() {
 }
 
 function setRuntimeMode(mode) {
-  if (sending) { showNotice('请等待当前回复或行动结束。'); return; }
+  if (workRendererBindings.isCurrentModeBusy(selectedRuntimeMode, chatTurnCoordinator.getState())) {
+    showNotice('请等待当前回复或行动结束。');
+    return;
+  }
   setWorkInspectorOpen(false);
   setCompanionInspectorOpen(false);
-  selectedRuntimeMode = mode === 'agent' ? 'agent' : 'chat';
+  const nextMode = mode === 'agent' ? 'agent' : 'chat';
+  if (nextMode !== selectedRuntimeMode) runtimeModeGeneration += 1;
+  selectedRuntimeMode = nextMode;
+  workRendererBindings.activateMode(selectedRuntimeMode);
   const agentMode = selectedRuntimeMode === 'agent';
   chatApp.classList.toggle('runtime-mode--chat', !agentMode);
   chatApp.classList.toggle('runtime-mode--agent', agentMode);
@@ -2900,14 +2952,9 @@ function renderWorkProjects() {
       const meta = document.createElement('small');
       meta.textContent = `${session.messages?.length || 0} 条消息 · ${new Date(session.updatedAt || session.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
       task.append(title, meta);
+      const viewIdentity = workRendererBindings.getIdentity();
       task.addEventListener('click', async () => {
-        if (sending) return;
-        try {
-          if (project.id !== activeWorkProjectId) await api.openWorkProject(project.id);
-          activeWorkProjectId = project.id;
-          activeWorkSessionId = session.id;
-          await refreshWorkData();
-        } catch (error) { showNotice(errorText(error)); }
+        await workRendererBindings.selectSession(project.id, session.id, viewIdentity);
       });
       task.addEventListener('contextmenu', (event) => openConversationContextMenu(event, session, 'work'));
       list.appendChild(task);
@@ -2922,14 +2969,9 @@ function renderWorkProjects() {
     const title = document.createElement('strong'); title.textContent = project.name;
     const meta = document.createElement('small'); meta.textContent = project.workspacePath ? 'Workspace 已连接' : '尚未选择 Workspace';
     button.append(title, meta);
+    const viewIdentity = workRendererBindings.getIdentity();
     button.addEventListener('click', async () => {
-      if (sending) return;
-      try {
-        await api.openWorkProject(project.id);
-        activeWorkProjectId = project.id;
-        activeWorkSessionId = '';
-        await refreshWorkData();
-      } catch (error) { showNotice(errorText(error)); }
+      await workRendererBindings.selectProject(project.id, viewIdentity);
     });
     group.appendChild(button);
     if (allWorkSessions.some((session) => session.projectId === project.id)) {
@@ -2958,24 +3000,6 @@ function workspaceRelativeLabel(relativePath) {
   return relativePath ? `Workspace/${relativePath}` : 'Workspace';
 }
 
-function resetWorkspaceExplorer(projectId = '') {
-  workspaceExplorerProjectId = projectId;
-  workspaceExplorerListings = new Map();
-  workspaceExplorerExpanded = new Set(['']);
-  workspaceExplorerSelection = null;
-  workspaceExplorerMayBeStale = false;
-  workspacePreview = null;
-  workspacePreviewRequestId += 1;
-}
-
-function workspaceEntryForPath(relativePath) {
-  for (const listing of workspaceExplorerListings.values()) {
-    const entry = (listing?.entries || []).find((item) => item.relativePath === relativePath);
-    if (entry) return entry;
-  }
-  return null;
-}
-
 function renderWorkspacePreview() {
   const state = workspacePreview;
   workspacePreviewOverlay.hidden = !state?.entry;
@@ -2991,23 +3015,9 @@ function renderWorkspacePreview() {
       : (state.message || '此文件暂不支持文本预览。');
 }
 
-async function loadWorkspacePreview(entry) {
-  if (entry?.type !== 'file') return;
-  const project = activeWorkProject();
-  if (!project?.workspacePath) return;
-  const requestId = ++workspacePreviewRequestId;
-  workspacePreview = { entry, status: 'loading', content: '', message: '' };
-  renderWorkspacePreview();
-  const result = await api.previewActionWorkspaceFile({ projectId: project.id, path: entry.relativePath });
-  if (requestId !== workspacePreviewRequestId || project.id !== activeWorkProjectId || workspaceExplorerSelection?.relativePath !== entry.relativePath) return;
-  workspacePreview = result?.ok
-    ? { entry, status: 'ready', content: String(result.data?.content || ''), message: '' }
-    : { entry, status: 'unavailable', content: '', message: String(result?.error?.userMessage || '此文件暂不支持文本预览。') };
-  renderWorkspacePreview();
-}
-
 function renderWorkspaceExplorer() {
   const project = activeWorkProject();
+  const viewIdentity = workRendererBindings.getExplorerIdentity();
   const configured = Boolean(project?.workspacePath);
   refreshActionWorkspaceButton.disabled = !configured || workspaceExplorerLoading;
   actionWorkspacePath.textContent = configured ? project.workspacePath : '选择后将在这里显示文件结构。';
@@ -3069,25 +3079,8 @@ function renderWorkspaceExplorer() {
       const name = document.createElement('span'); name.className = 'workspace-explorer__name'; name.textContent = entry.name;
       row.append(icon, name);
       row.title = workspaceRelativeLabel(entry.relativePath);
-      row.addEventListener('click', async () => {
-        workspaceExplorerSelection = entry;
-        if (entry.type === 'folder') {
-          workspacePreview = null;
-          workspacePreviewRequestId += 1;
-          if (workspaceExplorerExpanded.has(entry.relativePath)) workspaceExplorerExpanded.delete(entry.relativePath);
-          else {
-            workspaceExplorerExpanded.add(entry.relativePath);
-            if (!workspaceExplorerListings.has(entry.relativePath)) await loadWorkspaceDirectory(entry.relativePath);
-          }
-        } else {
-          loadWorkspacePreview(entry).catch((error) => {
-            if (workspaceExplorerSelection?.relativePath === entry.relativePath) {
-              workspacePreview = { entry, status: 'unavailable', content: '', message: errorText(error) };
-              renderWorkspacePreview();
-            }
-          });
-        }
-        renderWorkspaceExplorer();
+      row.addEventListener('click', () => {
+        workRendererBindings.selectWorkspaceEntry(entry, viewIdentity);
       });
       row.addEventListener('keydown', async (event) => {
         if (entry.type !== 'folder') return;
@@ -3105,66 +3098,17 @@ function renderWorkspaceExplorer() {
   renderWorkspacePreview();
 }
 
-async function loadWorkspaceDirectory(relativePath = '', options = {}) {
-  const project = activeWorkProject();
-  if (!project?.workspacePath) return;
-  const requestId = ++workspaceExplorerRequestId;
-  workspaceExplorerLoading = true;
-  renderWorkspaceExplorer();
-  try {
-    const listing = await api.listActionWorkspaceDirectory({ projectId: project.id, path: relativePath || '.' });
-    if (requestId !== workspaceExplorerRequestId || project.id !== activeWorkProjectId) return;
-    workspaceExplorerListings.set(relativePath, listing);
-  } catch (error) {
-    if (requestId === workspaceExplorerRequestId) showNotice(`无法读取 Workspace：${errorText(error)}`);
-  } finally {
-    if (requestId === workspaceExplorerRequestId) {
-      workspaceExplorerLoading = false;
-      renderWorkspaceExplorer();
-    }
-  }
+function loadWorkspaceDirectory(relativePath = '') {
+  return workRendererBindings.loadWorkspaceDirectory(relativePath, workRendererBindings.getExplorerIdentity());
 }
 
-async function refreshWorkspaceExplorer() {
-  const project = activeWorkProject();
-  if (!project?.workspacePath) return;
-  const expanded = new Set(workspaceExplorerExpanded);
-  const selectedPath = workspaceExplorerSelection?.relativePath || '';
-  workspaceExplorerProjectId = project.id;
-  workspaceExplorerListings = new Map();
-  workspaceExplorerExpanded = expanded;
-  workspaceExplorerSelection = null;
-  workspacePreview = null;
-  workspacePreviewRequestId += 1;
-  workspaceExplorerMayBeStale = false;
-  const requestId = ++workspaceExplorerRequestId;
-  workspaceExplorerLoading = true;
-  renderWorkspaceExplorer();
-  const load = async (relativePath) => {
-    const listing = await api.listActionWorkspaceDirectory({ projectId: project.id, path: relativePath || '.' });
-    if (requestId !== workspaceExplorerRequestId || project.id !== activeWorkProjectId) return null;
-    workspaceExplorerListings.set(relativePath, listing);
-    return listing;
-  };
-  try {
-    const root = await load('');
-    const restoreExpanded = async (listing) => {
-      for (const entry of listing?.entries || []) {
-        if (entry.type !== 'folder' || !workspaceExplorerExpanded.has(entry.relativePath)) continue;
-        const child = await load(entry.relativePath);
-        await restoreExpanded(child);
-      }
-    };
-    await restoreExpanded(root);
-    workspaceExplorerSelection = workspaceEntryForPath(selectedPath);
-  } catch (error) {
-    if (requestId === workspaceExplorerRequestId) showNotice(`无法读取 Workspace：${errorText(error)}`);
-  } finally {
-    if (requestId === workspaceExplorerRequestId) { workspaceExplorerLoading = false; renderWorkspaceExplorer(); }
-  }
+function refreshWorkspaceExplorer() {
+  return workRendererBindings.refreshWorkspace(workRendererBindings.getExplorerIdentity());
 }
 
 function renderActionWorkspace() {
+  const workState = workRendererBindings.getState();
+  const workBusy = workState.busy;
   const available = actionRuntimeStatus?.available === true;
   const project = activeWorkProject();
   const selectedSession = activeWorkSession();
@@ -3190,7 +3134,7 @@ function renderActionWorkspace() {
   renameWorkProjectButton.disabled = !project || isUngroupedWorkProject(project);
   renderWorkspaceExplorer();
   agentEnableButton.hidden = available;
-  agentCancelButton.hidden = !sending || !activeActionSessionId;
+  agentCancelButton.hidden = !workBusy || !(activeActionSessionId || actionRuntimeStatus?.activeSessionId);
   agentEventLog.replaceChildren();
   for (const agentEvent of actionEvents.slice(-8)) {
     const item = document.createElement('li');
@@ -3198,8 +3142,8 @@ function renderActionWorkspace() {
     agentEventLog.appendChild(item);
   }
   agentEventEmpty.hidden = actionEvents.length > 0;
-  messageInput.disabled = !available || !project || sending;
-  sendButton.disabled = !available || !project || sending;
+  messageInput.disabled = !available || !project || workBusy;
+  sendButton.disabled = !available || !project || workBusy;
   messagesElement.innerHTML = '';
   if (selectedSession) {
     for (const item of selectedSession.messages || []) addMessage(item.role, item.content, { createdAt: item.createdAt, operationResults: item.operationResults });
@@ -3210,72 +3154,56 @@ function renderActionWorkspace() {
   } else {
     addMessage('assistant', available ? '新任务已经准备好了。要我帮你完成什么工作？' : 'Work 现在还没有启用。你可以随时开启它，Chat 不会受影响。');
   }
+  if (workState.executionPending) addPendingMessage();
   renderWorkProjects();
 }
 
-async function refreshWorkData() {
-  try {
-    const state = await api.getWorkData();
-    workProjects = Array.isArray(state?.projects) ? state.projects : [];
-    activeWorkProjectId = workProjects.some((project) => project.id === activeWorkProjectId)
-      ? activeWorkProjectId
-      : (state?.lastOpenedProjectId && workProjects.some((project) => project.id === state.lastOpenedProjectId) ? state.lastOpenedProjectId : (workProjects[0]?.id || ''));
-    allWorkSessions = Array.isArray(state?.sessions) ? state.sessions : [];
-    workSessions = allWorkSessions.filter((session) => session.projectId === activeWorkProjectId);
-    if (!workSessions.some((session) => session.id === activeWorkSessionId)) activeWorkSessionId = workSessions[0]?.id || '';
-    const project = activeWorkProject();
-  } catch (error) {
-    workProjects = []; allWorkSessions = []; workSessions = []; activeWorkProjectId = ''; activeWorkSessionId = '';
-    showNotice(errorText(error));
-  }
-  if (selectedRuntimeMode === 'agent') {
-    renderActionWorkspace();
-    const project = activeWorkProject();
-    if (project?.workspacePath && workspaceExplorerProjectId !== project.id) {
-      resetWorkspaceExplorer(project.id);
-      loadWorkspaceDirectory();
-    } else if (!project?.workspacePath && workspaceExplorerProjectId) {
-      resetWorkspaceExplorer('');
-      renderWorkspaceExplorer();
-    }
-  }
+function refreshWorkData() {
+  return workRendererBindings.refreshWorkData();
 }
 
-function beginNewAction() {
-  if (sending) { showNotice('请等待当前行动结束。'); return; }
-  if (!activeWorkProjectId) { showNotice('请先创建一个 Work Project。'); return; }
-  api.createWorkSession({ projectId: activeWorkProjectId }).then(async (session) => {
-    activeWorkSessionId = session.id;
-    await refreshWorkData();
-    messageInput.focus();
-  }).catch((error) => showNotice(errorText(error)));
+async function beginNewAction() {
+  const identity = workRendererBindings.getIdentity();
+  if (workRendererBindings.isCurrentModeBusy('agent')) { showNotice('请等待当前行动结束。'); return; }
+  if (!identity.projectId) { showNotice('请先创建一个 Work Project。'); return; }
+  try {
+    const session = await workRendererBindings.createWorkSession(identity);
+    if (session && workRendererBindings.isViewCurrent(session.rendererViewIdentity)
+      && session.rendererViewIdentity.projectId === session.projectId
+      && session.rendererViewIdentity.workSessionId === session.id) messageInput.focus();
+  } catch (error) {
+    if (workRendererBindings.isViewCurrent(identity)) showNotice(errorText(error));
+  }
 }
 
 async function createWorkProject() {
-  if (sending) return;
+  const identity = workRendererBindings.getIdentity();
+  if (workRendererBindings.isCurrentModeBusy('agent')) return;
   const values = await openInputDialog({
     title: '新建 Work Project', description: '项目会拥有自己的 Workspace 和独立工作记录。', submitLabel: '创建项目',
     fields: [{ name: 'name', label: '项目名称', placeholder: '例如：课程资料', maxLength: 120 }]
   });
-  if (!values?.name?.trim()) return;
+  if (!values?.name?.trim() || !workRendererBindings.isViewCurrent(identity)) return;
   try {
-    const project = await api.createWorkProject({ name: values.name });
-    activeWorkProjectId = project.id;
-    activeWorkSessionId = '';
-    await refreshWorkData();
+    const project = await workRendererBindings.createProject(values.name, identity);
+    const current = workRendererBindings.getIdentity();
+    if (!project || current.mode !== 'agent' || current.projectId !== project.id) return;
     showNotice('项目已创建。请为它选择一个 Workspace。');
-    await selectActionWorkspace();
-    messageInput.focus();
-  } catch (error) { showNotice(errorText(error)); }
+    const selectedIdentity = await selectActionWorkspace();
+    if (selectedIdentity && workRendererBindings.isViewCurrent(selectedIdentity)) messageInput.focus();
+  } catch (error) {
+    if (workRendererBindings.isViewCurrent(identity)) showNotice(errorText(error));
+  }
 }
 
 async function renameCurrentWorkProject() {
+  const identity = workRendererBindings.getIdentity();
   const project = activeWorkProject();
   if (!project) { showNotice('请先选择一个 Work Project。'); return; }
   const values = await openInputDialog({ title: '重命名 Work Project', submitLabel: '保存', fields: [{ name: 'name', label: '项目名称', value: project.name, maxLength: 120 }] });
-  if (!values?.name?.trim()) return;
-  try { await api.renameWorkProject({ projectId: project.id, name: values.name }); await refreshWorkData(); }
-  catch (error) { showNotice(errorText(error)); }
+  if (!values?.name?.trim() || !workRendererBindings.isViewCurrent(identity)) return;
+  try { await workRendererBindings.renameProject(project.id, values.name, identity); }
+  catch (error) { if (workRendererBindings.isViewCurrent(identity)) showNotice(errorText(error)); }
 }
 
 function renderActionSteps(steps) {
@@ -3289,77 +3217,54 @@ function renderActionSteps(steps) {
   messagesElement.appendChild(list);
 }
 
-async function refreshActionRuntimeStatus() {
-  try {
-    actionRuntimeStatus = await api.getActionStatus();
-  } catch (error) {
-    actionRuntimeStatus = { enabled: false, available: false, reason: errorText(error) };
-  }
-  if (selectedRuntimeMode === 'agent') renderActionWorkspace();
+function refreshActionRuntimeStatus() {
+  return workRendererBindings.refreshRuntimeStatus();
 }
 
 async function selectActionWorkspace() {
-  if (sending) { showNotice('请等待当前行动结束。'); return; }
-  if (!activeWorkProjectId) { showNotice('请先创建一个 Work Project。'); return; }
-  try { await api.selectActionWorkspace(activeWorkProjectId); await refreshWorkData(); await refreshWorkspaceExplorer(); }
-  catch (error) { showNotice(errorText(error)); }
+  const identity = workRendererBindings.getIdentity();
+  if (workRendererBindings.isCurrentModeBusy('agent')) { showNotice('请等待当前行动结束。'); return false; }
+  if (!identity.projectId) { showNotice('请先创建一个 Work Project。'); return false; }
+  const selected = await workRendererBindings.selectWorkspace(identity);
+  if (!selected) return null;
+  const selectedIdentity = workRendererBindings.getIdentity();
+  return selectedIdentity.mode === 'agent' && selectedIdentity.projectId === identity.projectId
+    ? selectedIdentity
+    : null;
 }
 
 async function enableActionRuntime() {
+  const identity = workRendererBindings.getIdentity();
   try {
-    actionRuntimeStatus = await api.configureAction({ enabled: true });
+    await workRendererBindings.configureEnabled(identity);
+    if (!workRendererBindings.isViewCurrent(identity)) return;
     hideNotice();
-    renderActionWorkspace();
     messageInput.focus();
   } catch (error) {
-    showNotice(errorText(error));
+    if (workRendererBindings.isViewCurrent(identity)) showNotice(errorText(error));
   }
 }
 
 async function sendActionMessage() {
   const content = messageInput.value.trim();
-  if (!content || sending || actionRuntimeStatus?.available !== true || !activeWorkProjectId) return;
+  const identity = workRendererBindings.getIdentity();
+  if (!content || workRendererBindings.isCurrentModeBusy('agent') || actionRuntimeStatus?.available !== true || !identity.projectId) return;
   const project = activeWorkProject();
   if (!project?.workspacePath && /(?:文件|文件夹|目录|workspace|readme|读取|查看|浏览|打开)/i.test(content)) {
     showNotice('请先选择这个项目的 Workspace；选择后即可浏览和读取其中的文件。');
     await selectActionWorkspace();
     return;
   }
+  if (!workRendererBindings.isViewCurrent(identity)) return;
   hideNotice();
-  sending = true;
   messageInput.value = '';
-  if (!activeWorkSessionId) {
-    try { activeWorkSessionId = (await api.createWorkSession({ projectId: activeWorkProjectId })).id; }
-    catch (error) { sending = false; showNotice(errorText(error)); return; }
-  }
-  actionEvents = [];
-  renderActionWorkspace();
-  const pending = addPendingMessage();
-  try {
-    const response = await api.executeAction({ text: content, projectId: activeWorkProjectId, workSessionId: activeWorkSessionId, workspaceSelection: workspaceExplorerSelection?.relativePath || '' });
-    pending.remove();
-    activeActionSessionId = response?.session?.id || '';
-    if (response?.session?.status !== 'completed') showNotice(response?.presentation?.content || '这次行动没有完成。');
-  } catch (error) {
-    pending.remove();
-    showNotice(errorText(error));
-  } finally {
-    sending = false;
-    activeActionSessionId = '';
-    await refreshActionRuntimeStatus();
-    await refreshWorkData();
-    await refreshWorkspaceExplorer();
-    messageInput.focus();
-  }
+  const selectedPath = workspaceExplorerSelection?.relativePath || '';
+  const response = await workRendererBindings.executeAction(content, selectedPath, identity);
+  if (response && workRendererBindings.isViewCurrent(response.rendererViewIdentity)) messageInput.focus();
 }
 
 async function cancelAction() {
-  if (!activeActionSessionId) return;
-  try {
-    await api.cancelAction(activeActionSessionId);
-  } catch (error) {
-    showNotice(errorText(error));
-  }
+  return workRendererBindings.cancelAction(workRendererBindings.getIdentity());
 }
 
 function renderHistory() {
@@ -3393,14 +3298,14 @@ function renderHistory() {
     renameButton.textContent = '✎';
     renameButton.title = '重命名这段对话';
     renameButton.setAttribute('aria-label', `重命名“${session.title || '这段对话'}”`);
-    renameButton.addEventListener('click', async (event) => { event.stopPropagation(); await renameConversationSession(session); });
+    renameButton.addEventListener('click', async (event) => { event.stopPropagation(); await renameConversationSession(session, 'chat'); });
     const deleteButton = document.createElement('button');
     deleteButton.className = 'history-item__control history-item__delete';
     deleteButton.type = 'button';
     deleteButton.textContent = '×';
     deleteButton.title = '删除这段历史';
     deleteButton.setAttribute('aria-label', `删除“${session.title || '这段对话'}”`);
-    deleteButton.addEventListener('click', async (event) => { event.stopPropagation(); await deleteConversationSession(session); });
+    deleteButton.addEventListener('click', async (event) => { event.stopPropagation(); await deleteConversationSession(session, 'chat'); });
     actions.append(renameButton, deleteButton);
     const selectSession = async () => {
       if (session.id === activeChatSessionId()) { closeHistory(); return; }
@@ -3435,7 +3340,7 @@ function applyChatState(state) {
 }
 
 async function beginNewChat() {
-  if (sending) { showNotice('请等麻衣回复完这一条消息。'); return; }
+  if (chatTurnCoordinator.getState().busy) { showNotice('请等麻衣回复完这一条消息。'); return; }
   try {
     applyChatState(await api.newChatSession());
     closeHistory();
@@ -3614,18 +3519,27 @@ function configPayload() {
 
 async function sendWorkspaceIntent(content, intent) {
   const sessionId = activeChatSessionId();
+  const modeGeneration = runtimeModeGeneration;
+  const chatView = chatTurnCoordinator.getState();
+  const isCurrentChatView = () => !chatTurnCoordinator.getState().disposed
+    && selectedRuntimeMode === 'chat'
+    && runtimeModeGeneration === modeGeneration
+    && activeChatSessionId() === sessionId
+    && chatTurnCoordinator.isViewCurrent(chatView);
   try {
     const result = await api.executeChatWorkspaceCapability({
       sessionId,
       operation: intent.operation,
       relativePath: intent.relativePath
     });
-    if (chatTurnCoordinator.getState().disposed || activeChatSessionId() !== sessionId) return null;
+    if (!isCurrentChatView()) return null;
     if (!result?.ok || !result.execution?.contextId) throw new Error(workspaceErrorText(result));
     return sendMessage({ content, skipWorkspaceIntent: true, workspaceContextId: result.execution.contextId });
   } catch (error) {
-    if (!chatTurnCoordinator.getState().disposed && activeChatSessionId() === sessionId) showNotice(errorText(error));
-    refreshChatWorkspaceCapability().catch(() => {});
+    if (isCurrentChatView()) {
+      showNotice(errorText(error));
+      refreshChatWorkspaceCapability().catch(() => {});
+    }
     return null;
   }
 }
@@ -3640,8 +3554,9 @@ async function cancelChatUiTurn() {
 }
 
 async function sendMessage(options = {}) {
+  if (selectedRuntimeMode !== 'chat') return null;
   const content = String(options.content ?? messageInput.value).trim();
-  if (!content || sending || chatTurnCoordinator.getState().busy) return;
+  if (!content || chatTurnCoordinator.getState().busy) return;
   if (!chatConfig.configured) {
     showNotice('请先设置 DeepSeek API Key。');
     openSettings();
@@ -4895,9 +4810,7 @@ clearCustomWallpaperButton.addEventListener('click', clearCustomWallpaper);
 selectActionWorkspaceButton.addEventListener('click', selectActionWorkspace);
 refreshActionWorkspaceButton.addEventListener('click', () => { refreshWorkspaceExplorer().catch((error) => showNotice(errorText(error))); });
 closeWorkspacePreviewButton.addEventListener('click', () => {
-  workspacePreview = null;
-  workspacePreviewRequestId += 1;
-  renderWorkspacePreview();
+  workRendererBindings.closeWorkspacePreview(workRendererBindings.getExplorerIdentity());
 });
 workspacePreviewOverlay.addEventListener('pointerdown', (event) => {
   if (event.target === workspacePreviewOverlay) closeWorkspacePreviewButton.click();
@@ -4944,8 +4857,22 @@ inputDialogForm.addEventListener('submit', (event) => { event.preventDefault(); 
 inputDialogClose.addEventListener('click', () => closeInputDialog(null));
 inputDialogCancel.addEventListener('click', () => closeInputDialog(null));
 inputDialogOverlay.addEventListener('pointerdown', (event) => { if (event.target === inputDialogOverlay) closeInputDialog(null); });
-conversationContextRename.addEventListener('click', async () => { const session = conversationContextSession(); closeConversationContextMenu(); await renameConversationSession(session); });
-conversationContextDelete.addEventListener('click', async () => { const session = conversationContextSession(); closeConversationContextMenu(); await deleteConversationSession(session); });
+conversationContextRename.addEventListener('click', async () => {
+  const session = conversationContextSession();
+  const kind = conversationContextKind;
+  const workIdentity = conversationContextKind === 'work' ? conversationContextWorkIdentity : null;
+  const workProjectId = conversationContextWorkProjectId;
+  closeConversationContextMenu();
+  await renameConversationSession(session, kind, workIdentity, workProjectId);
+});
+conversationContextDelete.addEventListener('click', async () => {
+  const session = conversationContextSession();
+  const kind = conversationContextKind;
+  const workIdentity = conversationContextKind === 'work' ? conversationContextWorkIdentity : null;
+  const workProjectId = conversationContextWorkProjectId;
+  closeConversationContextMenu();
+  await deleteConversationSession(session, kind, workIdentity, workProjectId);
+});
 document.addEventListener('pointerdown', (event) => {
   if (!conversationContextMenu.classList.contains('conversation-context-menu--hidden') && !conversationContextMenu.contains(event.target)) closeConversationContextMenu();
   if (!runtimeSwitcher.contains(event.target)) {
@@ -5028,6 +4955,7 @@ try {
 }
 window.addEventListener('beforeunload', () => {
   chatTurnCoordinator.dispose();
+  workRendererBindings.dispose();
   voiceCallActive = false;
   api.stopVoiceListening().catch(() => {});
   stopSpeaking();
@@ -5050,12 +4978,8 @@ Promise.all([
   continuityState = storedContinuity;
   lifeState = storedLifeState;
   momentsState = storedMomentsState;
-  actionRuntimeStatus = storedActionRuntimeStatus;
-  workProjects = Array.isArray(storedWorkData?.projects) ? storedWorkData.projects : [];
-  activeWorkProjectId = storedWorkData?.lastOpenedProjectId || workProjects[0]?.id || '';
-  allWorkSessions = Array.isArray(storedWorkData?.sessions) ? storedWorkData.sessions : [];
-  workSessions = allWorkSessions.filter((session) => session.projectId === activeWorkProjectId);
-  activeWorkSessionId = workSessions[0]?.id || '';
+  workRendererBindings.setInitialRuntimeStatus(storedActionRuntimeStatus);
+  workRendererBindings.setInitialData(storedWorkData);
   renderMemories(); renderSharedLife(); renderLifeState(); renderMoments(); applyChatState(chatState);
   setRuntimeMode('chat');
   refreshSpeechVoices(); refreshVoiceCapabilities();
@@ -5067,15 +4991,6 @@ Promise.all([
 api.onShowChatSettings(openSettings);
 api.onShowLifePanel(openLife);
 chatTurnCoordinator.addDisposer(api.onVoiceStreamDelta(handleVoiceStreamDelta));
-api.onActionSessionStarted((session) => {
-  activeActionSessionId = String(session?.id || '');
-  if (selectedRuntimeMode === 'agent') renderActionWorkspace();
-});
-api.onAgentEvent((agentEvent) => {
-  if (!agentEvent || agentEvent.sessionId !== activeActionSessionId) return;
-  actionEvents.push(agentEvent);
-  if (selectedRuntimeMode === 'agent') renderActionWorkspace();
-});
 api.onLocalVoiceStatus((status) => {
   const current = voiceCapabilities.localTts || {};
   renderLocalVoiceStatus(status);
@@ -5086,19 +5001,21 @@ api.onSharedLifeUpdated((state) => { sharedLifeState = state; renderSharedLife()
 api.onLifeHubUpdated((state) => { lifeHubState = state; renderSharedLife(); });
 api.onContinuityUpdated((state) => { continuityState = state; renderSharedLife(); renderCompanionWorkspace(); });
 window.addEventListener('focus', () => {
-  if (selectedRuntimeMode !== 'agent' || !activeWorkProject()?.workspacePath || workspaceExplorerLoading || workspaceExplorerListings.size === 0) return;
-  workspaceExplorerMayBeStale = true;
-  renderWorkspaceExplorer();
+  if (selectedRuntimeMode !== 'agent') return;
+  workRendererBindings.markWorkspaceStale(workRendererBindings.getExplorerIdentity());
 });
 api.onChatProactiveGreeting(async (payload) => {
   if (chatTurnCoordinator.getState().disposed) return;
   const eventView = chatTurnCoordinator.getState();
   if (!payload?.sessionId || payload.sessionId === eventView.sessionId) {
-    addMessage('assistant', payload.content, { proactive: true, createdAt: payload.createdAt, messageId: payload.id });
+    const renderInChat = selectedRuntimeMode === 'chat';
+    if (renderInChat) addMessage('assistant', payload.content, { proactive: true, createdAt: payload.createdAt, messageId: payload.id });
     conversation.push({ role: 'assistant', content: payload.content });
     conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-    setMood(payload);
-    if (voiceConfig().autoReadReplies && !voiceCallActive) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
+    if (renderInChat) {
+      setMood(payload);
+      if (voiceConfig().autoReadReplies && !voiceCallActive) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
+    }
   }
   try {
     const refreshed = await chatTurnCoordinator.refreshSessionMetadata(() => api.getChatState());

@@ -83,6 +83,7 @@ class AgentLoop {
           if (signal?.aborted) throw abortError(signal, state);
           fail(String(error?.code || 'AGENT_MODEL_FAILURE'), String(error?.message || 'Agent 模型请求失败。'));
         }
+        if (signal?.aborted) throw abortError(signal, state);
         const calls = Array.isArray(modelOutput?.toolCalls) ? modelOutput.toolCalls : [];
         emit('ModelRequestCompleted', {
           turnId,

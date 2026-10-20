@@ -51,6 +51,8 @@ Renderer chat:send
 
 Renderer 的 `chat-turn-coordinator.js` 只拥有当前视图的 turn token、session/view generation、乐观消息与 pending 清理、取消确认、Voice 流控制器和订阅释放；它不拥有请求 `AbortController`，也不决定 Main 的持久化。任何完整 Chat state hydration（包括同一 session 的重新加载）都会使旧 Renderer turn 失效并请求 Main 取消对应 session，避免旧 `finally`、迟到回复或流式完成覆盖新视图。主动消息后的会话列表刷新走有 generation/turn 序号校验的 metadata-only 路径，不重新加载消息视图；已有 turn 期间的迟到刷新会被丢弃。
 
+Work 页面由独立的 `work-renderer-controller.js`、`workspace-explorer-controller.js` 和 `work-renderer-bindings.js` 管理 Renderer 投影；它们不会改变 Main 持有的 ActionSession、task 或取消状态。Chat 的 `sendMessage()` 只在 Chat 模式启动。临时 Workspace 读取还绑定 Chat session、Chat view 与模式代次：读取完成时如果用户已切换工作区或 Chat 视图已变化，就不会再发起隐藏的 `chat:send`。Chat 主动问候即使在 Work 可见时到达，也只更新 Chat 的内存对话与会话列表，不向 Work 消息区插入气泡；返回 Chat 后从当前对话记录加载它。
+
 请求完成后的会话消息与长期状态候选在同一段 Main 编排中提交。若保存失败，`ChatService` 会恢复本轮前的内存快照，IPC 返回错误，不发送成功回复或状态通知。保存成功后才广播状态和交付回复。取消或过期的请求不会进入该提交路径。
 
 `directLocalTimeReply` 只处理符合条件的简短“当前时间/日期”问题，不请求模型；它也经过 Main 的请求生命周期、会话追加和单次持久化流程。流式请求把增量经现有 callback 送往 Renderer，最终仍只落下一条完整助手消息。

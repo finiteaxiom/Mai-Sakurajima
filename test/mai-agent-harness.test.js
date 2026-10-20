@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { ActionRuntimeManager } = require('../agent/action-runtime-manager');
 const { MaiAgentRuntime } = require('../agent/mai-agent-runtime');
+const { DeepSeekAgentAdapter } = require('../agent/deepseek-agent-adapter');
 const { FakeAgentModelAdapter } = require('../agent/fake-agent-model-adapter');
 const { createToolRegistry, createSafeAgentToolRegistry } = require('../agent/agent-tool-registry');
 const { createCapabilityPolicy } = require('../agent/capability-policy');
@@ -50,6 +51,90 @@ test('no-tool final completes in one turn', async () => {
   assert.equal(response.session.status, 'completed');
   assert.equal(response.session.task.rounds, 1);
   assert.equal(response.session.task.toolCalls, 0);
+});
+
+test('a late DeepSeek fetch success after Work cancellation cannot complete the task', async () => {
+  let markFetchStarted;
+  let releaseFetch;
+  const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
+  const fetchGate = new Promise((resolve) => { releaseFetch = resolve; });
+  let requestSignal;
+  const adapter = new DeepSeekAgentAdapter({
+    getApiKey: () => 'synthetic-test-key',
+    fetchImpl: async (_url, options) => {
+      requestSignal = options.signal;
+      markFetchStarted();
+      return fetchGate;
+    }
+  });
+  const runtime = new MaiAgentRuntime({ modelAdapter: adapter });
+  const manager = new ActionRuntimeManager({ getConfiguration: () => ({ enabled: true, runtime: 'mai-agent' }) }).register(runtime);
+  const events = [];
+  let sessionId = '';
+  const pending = manager.execute({
+    text: 'synthetic cancellation test',
+    capabilities: ['safe-local'],
+    projectId: 'test-project',
+    workSessionId: 'test-session',
+    onStarted: (session) => { sessionId = session.id; },
+    onEvent: (event) => events.push(event)
+  });
+  await fetchStarted;
+  const cancelResponse = await manager.cancel(sessionId);
+  assert.equal(cancelResponse.status, 'running');
+  assert.equal(requestSignal.aborted, true);
+  releaseFetch({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        model: 'deepseek-chat',
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'synthetic late final response' } }]
+      };
+    }
+  });
+
+  const result = await pending;
+  assert.equal(result.session.status, 'cancelled');
+  assert.equal(result.session.task.status, 'cancelled');
+  assert.equal(result.session.error.code, 'action_cancelled');
+  assert.deepEqual(events.filter((event) => /^Task(Completed|Failed|Cancelled)$/.test(event.type)).map((event) => event.type), ['TaskCancelled']);
+  assert.equal(events.some((event) => event.type === 'ModelRequestCompleted'), false);
+});
+
+test('AgentLoop rechecks cancellation after a late model adapter success', async () => {
+  let markModelStarted;
+  let releaseModel;
+  const modelStarted = new Promise((resolve) => { markModelStarted = resolve; });
+  const modelGate = new Promise((resolve) => { releaseModel = resolve; });
+  const runtime = new MaiAgentRuntime({
+    modelAdapter: {
+      id: 'ignores-abort',
+      async runRound() {
+        markModelStarted();
+        return modelGate;
+      }
+    }
+  });
+  const manager = new ActionRuntimeManager({ getConfiguration: () => ({ enabled: true, runtime: 'mai-agent' }) }).register(runtime);
+  const events = [];
+  let sessionId = '';
+  const pending = manager.execute({
+    text: 'synthetic late adapter test',
+    capabilities: ['safe-local'],
+    onStarted: (session) => { sessionId = session.id; },
+    onEvent: (event) => events.push(event)
+  });
+  await modelStarted;
+  await manager.cancel(sessionId);
+  releaseModel({ assistantItem: { role: 'assistant', content: 'late success' }, toolCalls: [], finishReason: 'stop' });
+
+  const result = await pending;
+  assert.equal(result.session.status, 'cancelled');
+  assert.equal(result.session.task.status, 'cancelled');
+  assert.deepEqual(events.filter((event) => /^Task(Completed|Failed|Cancelled)$/.test(event.type)).map((event) => event.type), ['TaskCancelled']);
+  assert.equal(events.some((event) => event.type === 'ModelRequestCompleted'), false);
 });
 
 test('tool failures become ToolResult observations and are bounded', async () => {

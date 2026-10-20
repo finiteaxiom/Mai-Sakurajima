@@ -91,6 +91,9 @@ test('wallpaper picker spans both settings columns so its options cannot overflo
 test('Chat and Work use an explicit top-level workspace switch with separate surfaces', () => {
   const html = fs.readFileSync(path.join(renderer, 'chat.html'), 'utf8');
   const script = fs.readFileSync(path.join(renderer, 'chat.js'), 'utf8');
+  const workController = fs.readFileSync(path.join(renderer, 'work-renderer-controller.js'), 'utf8');
+  const workBindings = fs.readFileSync(path.join(renderer, 'work-renderer-bindings.js'), 'utf8');
+  const explorerController = fs.readFileSync(path.join(renderer, 'workspace-explorer-controller.js'), 'utf8');
   const layoutCss = fs.readFileSync(path.join(renderer, 'workspace-layout.css'), 'utf8');
 
   assert.doesNotMatch(html, /workspace-context-toggle/);
@@ -111,16 +114,22 @@ test('Chat and Work use an explicit top-level workspace switch with separate sur
   assert.match(script, /getWorkData/);
   assert.match(script, /agentAvatarButton\.addEventListener\('click', \(\) => openAvatarPicker\('mai'\)\)/);
   assert.match(script, /selectedRuntimeMode === 'agent'/);
-  assert.match(script, /api\.executeAction\(\{ text: content, projectId: activeWorkProjectId, workSessionId: activeWorkSessionId, workspaceSelection:/);
+  assert.match(script, /workRendererBindings\.executeAction\(content, selectedPath, identity\)/);
+  assert.match(workController, /async function executeAction\(/);
+  assert.match(workController, /async function renameSession\(/);
+  assert.match(workController, /async function deleteSession\(/);
+  assert.match(workBindings, /createWorkRendererController/);
   assert.match(script, /openConversationContextMenu\(event, session, 'work'\)/);
-  assert.match(script, /api\.renameWorkSession/);
-  assert.match(script, /api\.deleteWorkSession/);
+  assert.match(script, /workRendererBindings\.renameSession\(workProjectId, session\.id, values\.title, workIdentity\)/);
+  assert.match(script, /workRendererBindings\.deleteSession\(workProjectId, session\.id, workIdentity\)/);
+  assert.match(script, /renameConversationSession\(session, 'chat'\)/);
+  assert.match(script, /deleteConversationSession\(session, 'chat'\)/);
   assert.match(html, /id="action-workspace-tree"/);
   assert.match(html, /id="refresh-action-workspace"/);
   assert.match(html, /id="workspace-preview-overlay"/);
   assert.match(html, /id="close-workspace-preview"/);
-  assert.match(script, /api\.listActionWorkspaceDirectory/);
-  assert.match(script, /api\.previewActionWorkspaceFile/);
+  assert.match(explorerController, /api\.listActionWorkspaceDirectory/);
+  assert.match(explorerController, /api\.previewActionWorkspaceFile/);
   assert.match(script, /function renderWorkspaceExplorer\(\)/);
   assert.match(script, /function loadWorkspaceDirectory\(/);
   assert.match(script, /workspaceExplorerSelection/);

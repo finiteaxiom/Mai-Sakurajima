@@ -9,6 +9,38 @@ function toError(status, message) {
   const code = status === 401 ? 'authentication_failed' : status === 402 ? 'insufficient_balance' : status === 429 ? 'rate_limited' : status >= 500 ? 'provider_unavailable' : 'provider_http_error';
   return new AgentModelAdapterError(code, apiErrorMessage(status, message));
 }
+function abortError(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new AgentModelAdapterError('action_cancelled', 'Agent 模型请求已取消。');
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortError(signal);
+}
+function awaitWithSignal(operation, signal) {
+  if (typeof operation !== 'function') return Promise.reject(new TypeError('Abortable work must be provided as a function.'));
+  if (!signal) {
+    try { return Promise.resolve(operation()); }
+    catch (error) { return Promise.reject(error); }
+  }
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, result) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', aborted);
+      callback(result);
+    };
+    const aborted = () => finish(reject, abortError(signal));
+    signal.addEventListener('abort', aborted, { once: true });
+    let value;
+    try { value = operation(); }
+    catch (error) { finish(reject, error); return; }
+    Promise.resolve(value).then((result) => finish(resolve, result), (error) => finish(reject, error));
+    if (signal.aborted) aborted();
+  });
+}
 function cleanToolCalls(calls) {
   return (Array.isArray(calls) ? calls : []).map((call, index) => ({
     callId: String(call?.id || `agent-call-${index + 1}`).slice(0, 160), name: String(call?.function?.name || '').slice(0, 80),
@@ -39,11 +71,15 @@ class DeepSeekAgentAdapter extends AgentModelAdapter {
     if (options.signal?.aborted) relayAbort(); else options.signal?.addEventListener('abort', relayAbort, { once: true });
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, Number(context.timeoutMs) || this.defaultTimeoutMs); timer.unref?.();
     try {
-      const response = await this.fetchImpl(this.endpoint, {
+      const response = await awaitWithSignal(() => this.fetchImpl(this.endpoint, {
         method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, signal: controller.signal,
         body: JSON.stringify({ model: resolveModel(context.model || this.getModel()), messages, tools: Array.isArray(context.tools) ? context.tools : [], tool_choice: 'auto', thinking: { type: 'disabled' }, max_tokens: Number(context.maxTokens) || 900, stream: false })
-      });
-      let data = null; try { data = await response.json(); } catch { /* handled below */ }
+      }), controller.signal);
+      throwIfAborted(controller.signal);
+      let data = null;
+      try { data = await awaitWithSignal(() => response.json(), controller.signal); }
+      catch (error) { if (controller.signal.aborted) throw abortError(controller.signal); }
+      throwIfAborted(controller.signal);
       if (!response?.ok) throw toError(Number(response?.status) || 0, data?.error?.message);
       const choice = data?.choices?.[0]; const message = choice?.message;
       if (!message) throw new AgentModelAdapterError('empty_response', 'DeepSeek 没有返回 Agent 回复。');
