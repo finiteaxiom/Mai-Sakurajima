@@ -13,7 +13,7 @@ Chat 仍固定为 `ChatService -> ChatRequestService -> ModelGateway -> Provider
 
 ## Work 产品数据与持久化
 
-`work/work-store.js` 是 Work 产品记录的唯一 Owner，独立保存到 `%APPDATA%\\Mai Sakurajima\\mai-work.json`。`WorkProject` 拥有 `id`、`name`、`workspacePath` 和时间字段；`WorkSession` 属于一个 Project，持有可重新打开的用户消息和最终回复。`ActionSession` 仍只是 `ActionRuntimeManager.sessions` 中一次执行的短生命周期缓存，包含运行状态和受控结果，但不是历史记录 Owner。
+`work/work-store.js` 是 Work 产品记录的唯一 Owner，独立保存到 `%APPDATA%\\Mai Sakurajima\\mai-work.json`。`WorkProject` 拥有 `id`、`name`、`workspacePath` 和时间字段；`WorkSession` 属于一个 Project，持有可重新打开的用户消息和最终回复。`ActionSession` 仍只是 `ActionRuntimeManager.sessions` 中一次执行的短生命周期缓存，包含运行状态和受控结果，但不是历史记录 Owner。Main 内存缓存最多保留最近进入终态的 500 条，按终态顺序淘汰；运行中且仍关联 controller 的记录不会被淘汰。更早的终态 id 按未知 id 返回 `null`，当前执行结果仍由 `execute()` 返回并保留在缓存中供 Renderer 确认。此限制只作用于 Action Runtime 内存，不裁剪 WorkSession 或 Chat 历史。
 
 执行时 `action-ipc.js` 从当前 `WorkProject` 读取 `workspacePath`、`projectId` 与 `workSessionId`，把它们作为显式 execution context 传给 `ActionRuntimeManager` 和 `MaiAgentRuntime`。Renderer 若在 Explorer 中明确选中一个安全路径，会额外传入已在 Main Process 复核的 `workspaceSelection`，它只作为本次 Work Prompt 的指向，不保存到 Chat、Memory 或 Persona。`MaiAgentRuntime` 为该次执行构造 Workspace 工具链，因此 Project A 不会读取 Project B 的 Workspace。Workspace 由用户通过当前 Project 的 Inspector 选择；模型没有切换 Project 或 Workspace 的工具。
 

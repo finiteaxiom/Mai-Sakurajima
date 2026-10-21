@@ -119,7 +119,7 @@ Renderer Agent explicit workspace
   -> Action presentation
 ```
 
-`ActionSession` 只驻留在行动运行时，并可通过 `agent:list-sessions` 仅供 Agent 的任务侧栏读取；它的 task state、结果和事件日志不写入 `memoryState`、Chat sessions 或 Prompt。行动运行时未启用、不可用、失败或被整个模块移除时，现有 Companion Runtime 的启动与 Chat 链路仍可正常工作。
+`ActionSession` 只驻留在行动运行时，并可通过 `agent:list-sessions` 仅供 Agent 的任务侧栏读取；它的 task state、结果和事件日志不写入 `memoryState`、Chat sessions 或 Prompt。Main 内存最多保留最近进入终态的 500 条，运行中及仍关联 controller 的记录不参与淘汰；更早的终态 id 返回未知 id 的 `null` 语义。该缓存上限不会裁剪 WorkStore 或 Chat 历史。行动运行时未启用、不可用、失败或被整个模块移除时，现有 Companion Runtime 的启动与 Chat 链路仍可正常工作。
 
 ## 架构方向
 

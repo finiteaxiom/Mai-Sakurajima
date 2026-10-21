@@ -1,0 +1,297 @@
+{
+  "ok": true,
+  "benchmark": "synthetic-storage-performance",
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "22.22.1",
+    "electron": "39.8.10",
+    "appVersion": "7.1.0",
+    "mainThreadBlockingMeaning": "Synchronous operation wall time on Electron Main; this is not a GUI paint or input-latency measurement.",
+    "heapMeasurementMeaning": "heapUsed before and after each sampled block without forced GC; includes process baseline and GC noise."
+  },
+  "userDataIsolation": {
+    "expectedDirectoryMatched": true,
+    "resolvedDirectory": "<temporary userData; verified against MAI_EXPECTED_USER_DATA_DIR>"
+  },
+  "scenarios": {
+    "memoryLoadAndNormalization": {
+      "samplesMs": [
+        30.061,
+        30.01,
+        31.697
+      ],
+      "medianMs": 30.061,
+      "p95Ms": 31.697,
+      "heapUsedBeforeBytes": 115246584,
+      "heapUsedAfterBytes": 128206140
+    },
+    "workLoadAndNormalization": {
+      "samplesMs": [
+        183.249,
+        187.206,
+        183.057
+      ],
+      "medianMs": 183.249,
+      "p95Ms": 187.206,
+      "heapUsedBeforeBytes": 161290624,
+      "heapUsedAfterBytes": 231590468
+    },
+    "chatStateSmallPayloadBytes": 25579,
+    "chatStateSmall": {
+      "samplesMs": [
+        0.094,
+        0.083,
+        0.08,
+        0.08,
+        0.079
+      ],
+      "medianMs": 0.08,
+      "p95Ms": 0.094,
+      "heapUsedBeforeBytes": 231671068,
+      "heapUsedAfterBytes": 232070056,
+      "messageCount": 30
+    },
+    "chatStateLargePayloadBytes": 578589,
+    "chatStateLarge": {
+      "samplesMs": [
+        1.592,
+        1.356,
+        1.611,
+        1.574,
+        1.404
+      ],
+      "medianMs": 1.574,
+      "p95Ms": 1.611,
+      "heapUsedBeforeBytes": 233353080,
+      "heapUsedAfterBytes": 239503100,
+      "messageCount": 1998
+    },
+    "promptConstructionSmallCharacters": 9560,
+    "promptConstructionSmall": {
+      "samplesMs": [
+        48.459,
+        49.724,
+        45.138,
+        41.66,
+        44.804
+      ],
+      "medianMs": 45.138,
+      "p95Ms": 49.724,
+      "heapUsedBeforeBytes": 237608344,
+      "heapUsedAfterBytes": 247009428,
+      "messageCount": 30
+    },
+    "promptConstructionLargeCharacters": 9566,
+    "promptConstructionLarge": {
+      "samplesMs": [
+        33.553,
+        36.352,
+        34.77,
+        37.949,
+        32.696
+      ],
+      "medianMs": 34.77,
+      "p95Ms": 37.949,
+      "heapUsedBeforeBytes": 231579312,
+      "heapUsedAfterBytes": 255783988,
+      "messageCount": 1998
+    },
+    "chatTurnAndMemoryJsonPersistence": {
+      "samplesMs": [
+        92.491,
+        85.456,
+        78.569,
+        88.736,
+        82.811
+      ],
+      "medianMs": 85.456,
+      "p95Ms": 92.491,
+      "heapUsedBeforeBytes": 255785920,
+      "heapUsedAfterBytes": 268689828
+    },
+    "chatNearCapacityBoundary": {
+      "messagesBefore": 1998,
+      "messagesAfterAcceptedTurn": 2000,
+      "bytesBeforeAcceptedTurn": 4648362,
+      "bytesAfterAcceptedTurn": 4648881,
+      "fullCapRefusalCode": "CHAT_HISTORY_LIMIT_REACHED",
+      "refusalLeftBytesUnchanged": true
+    },
+    "workSnapshotPayloadBytes": 7826968,
+    "workSnapshot": {
+      "samplesMs": [
+        58.755,
+        56.376,
+        57.166,
+        56.357,
+        75.17
+      ],
+      "medianMs": 57.166,
+      "p95Ms": 75.17,
+      "heapUsedBeforeBytes": 265217464,
+      "heapUsedAfterBytes": 291651364
+    },
+    "workTurnAndJsonPersistence": {
+      "samplesMs": [
+        624.034,
+        622.858,
+        620.758,
+        621.746,
+        627.396
+      ],
+      "medianMs": 622.858,
+      "p95Ms": 627.396,
+      "heapUsedBeforeBytes": 291651848,
+      "heapUsedAfterBytes": 347510224
+    },
+    "actionCachePersistenceIsolation": {
+      "chatHistoryBytesUnchanged": true,
+      "chatMessageCount": 12970,
+      "workHistoryBytesUnchanged": true,
+      "workMessageCount": 40010
+    }
+  },
+  "actionRetention": [
+    {
+      "targetRuns": 100,
+      "runBatch": {
+        "samplesMs": [
+          2.669,
+          1.833,
+          1.423
+        ],
+        "medianMs": 1.833,
+        "p95Ms": 2.669
+      },
+      "listSessions": {
+        "samplesMs": [
+          0.254,
+          0.125,
+          0.169,
+          0.171,
+          0.134
+        ],
+        "medianMs": 0.169,
+        "p95Ms": 0.254,
+        "payloadBytes": 32873
+      },
+      "status": {
+        "samplesMs": [
+          0.008,
+          0.004,
+          0.002,
+          0.002,
+          0.002
+        ],
+        "medianMs": 0.002,
+        "p95Ms": 0.008
+      },
+      "cachedSessions": 100,
+      "listedSessions": 100,
+      "controllers": 0,
+      "activeSessionId": null
+    },
+    {
+      "targetRuns": 500,
+      "runBatch": {
+        "samplesMs": [
+          7.579,
+          6.071,
+          5.938
+        ],
+        "medianMs": 6.071,
+        "p95Ms": 7.579
+      },
+      "listSessions": {
+        "samplesMs": [
+          0.927,
+          0.53,
+          0.551,
+          0.525,
+          0.495
+        ],
+        "medianMs": 0.53,
+        "p95Ms": 0.927,
+        "payloadBytes": 165673
+      },
+      "status": {
+        "samplesMs": [
+          0.01,
+          0.007,
+          0.007,
+          0.007,
+          0.006
+        ],
+        "medianMs": 0.007,
+        "p95Ms": 0.01
+      },
+      "cachedSessions": 500,
+      "listedSessions": 500,
+      "controllers": 0,
+      "activeSessionId": null
+    },
+    {
+      "targetRuns": 1000,
+      "runBatch": {
+        "samplesMs": [
+          14.495,
+          14.29,
+          13.999
+        ],
+        "medianMs": 14.29,
+        "p95Ms": 14.495
+      },
+      "listSessions": {
+        "samplesMs": [
+          0.613,
+          0.509,
+          0.49,
+          0.525,
+          0.506
+        ],
+        "medianMs": 0.509,
+        "p95Ms": 0.613,
+        "payloadBytes": 166002
+      },
+      "status": {
+        "samplesMs": [
+          0.013,
+          0.007,
+          0.007,
+          0.007,
+          0.008
+        ],
+        "medianMs": 0.007,
+        "p95Ms": 0.013
+      },
+      "cachedSessions": 500,
+      "listedSessions": 500,
+      "controllers": 0,
+      "activeSessionId": null
+    }
+  ],
+  "summary": {
+    "chatSmallPayloadBytes": 25579,
+    "chatLargePayloadBytes": 578589,
+    "workSnapshotPayloadBytes": 7826968,
+    "actionsAt1000Runs": 500,
+    "actionListAt1000RunsPayloadBytes": 166002
+  },
+  "fixture": {
+    "memoryBytes": 3394165,
+    "memorySessions": 55,
+    "memoryMessages": 12958,
+    "nearCapSessionMessages": 1998,
+    "workBytes": 6946969,
+    "workProjects": 20,
+    "workSessions": 800,
+    "workMessages": 40000
+  },
+  "runner": {
+    "generatedAt": "2026-10-21T04:48:38.894Z",
+    "electronExecutable": "electron.exe",
+    "isolatedUserData": true,
+    "temporaryUserDataDirectory": "<temporary; removed after run>"
+  }
+}

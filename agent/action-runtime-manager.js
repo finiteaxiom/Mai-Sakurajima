@@ -5,6 +5,13 @@ const { createActionSession, publicActionSession, transitionActionSession } = re
 const { createCapabilityPolicy } = require('./capability-policy');
 const { presentActionError, presentActionResult } = require('./action-presentation');
 
+const MAX_TERMINAL_ACTION_SESSIONS = 500;
+const TERMINAL_ACTION_SESSION_STATUSES = new Set([
+  ACTION_SESSION_STATUS.COMPLETED,
+  ACTION_SESSION_STATUS.FAILED,
+  ACTION_SESSION_STATUS.CANCELLED
+]);
+
 function normalizeActionConfiguration(value = {}) {
   return {
     enabled: value?.enabled === true,
@@ -21,6 +28,10 @@ class ActionRuntimeManager {
     this.runtimes = new Map();
     this.sessions = new Map();
     this.controllers = new Map();
+    this.terminalSessionOrder = [];
+    this.terminalSessionOrderHead = 0;
+    this.terminalSessionIds = new Set();
+    this.terminalSessionCount = 0;
     this.createSession = options.createSession || createActionSession;
     this.now = options.now || (() => Date.now());
     this.capabilityPolicy = options.capabilityPolicy || createCapabilityPolicy({ allowed: ['safe-local', 'workspace-read', 'workspace-write'] });
@@ -64,6 +75,43 @@ class ActionRuntimeManager {
     return [...this.sessions.values()]
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
       .map((session) => publicActionSession(session));
+  }
+
+  pruneTerminalSessions() {
+    let excess = this.terminalSessionCount - MAX_TERMINAL_ACTION_SESSIONS;
+    if (excess <= 0) return 0;
+
+    let removed = 0;
+    const protectedEntries = [];
+    const queuedAtStart = this.terminalSessionOrder.length - this.terminalSessionOrderHead;
+    for (let scanned = 0; scanned < queuedAtStart && excess > 0; scanned += 1) {
+      const sessionId = this.terminalSessionOrder[this.terminalSessionOrderHead++];
+      if (!this.terminalSessionIds.has(sessionId)) continue;
+      const session = this.sessions.get(sessionId);
+      if (this.controllers.has(sessionId) || !TERMINAL_ACTION_SESSION_STATUSES.has(session?.status)) {
+        protectedEntries.push(sessionId);
+        continue;
+      }
+      this.sessions.delete(sessionId);
+      this.terminalSessionIds.delete(sessionId);
+      this.terminalSessionCount -= 1;
+      excess -= 1;
+      removed += 1;
+    }
+    if (protectedEntries.length) this.terminalSessionOrder.push(...protectedEntries);
+    if (this.terminalSessionOrderHead > 256 && this.terminalSessionOrderHead * 2 >= this.terminalSessionOrder.length) {
+      this.terminalSessionOrder = this.terminalSessionOrder.slice(this.terminalSessionOrderHead);
+      this.terminalSessionOrderHead = 0;
+    }
+    return removed;
+  }
+
+  recordTerminalSession(sessionId) {
+    const id = String(sessionId || '');
+    if (!id || this.terminalSessionIds.has(id)) return;
+    this.terminalSessionIds.add(id);
+    this.terminalSessionOrder.push(id);
+    this.terminalSessionCount += 1;
   }
 
   async execute(input = {}) {
@@ -115,6 +163,7 @@ class ActionRuntimeManager {
       });
       session = transitionActionSession(session, ACTION_SESSION_STATUS.COMPLETED, { result, error: null, task: result?.task || null }, this.now());
       this.sessions.set(session.id, session);
+      this.recordTerminalSession(session.id);
       return { session: publicActionSession(session), presentation: presentActionResult(result) };
     } catch (error) {
       const cancelled = controller.signal.aborted || error?.code === 'action_cancelled';
@@ -129,9 +178,11 @@ class ActionRuntimeManager {
         this.now()
       );
       this.sessions.set(session.id, session);
+      this.recordTerminalSession(session.id);
       return { session: publicActionSession(session), presentation: presentActionError(normalizedError) };
     } finally {
       this.controllers.delete(session.id);
+      this.pruneTerminalSessions();
     }
   }
 

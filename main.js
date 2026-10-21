@@ -6082,6 +6082,279 @@ function createLlmDiagnostic(requestPurpose, caller) {
   };
 }
 
+function performanceNowMilliseconds() {
+  return Number(process.hrtime.bigint()) / 1e6;
+}
+
+function summarizePerformanceSamples(samples) {
+  const sorted = samples.slice().sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const medianMs = sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+  const p95Index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+  return {
+    samplesMs: samples.map((sample) => Number(sample.toFixed(3))),
+    medianMs: Number(medianMs.toFixed(3)),
+    p95Ms: Number(sorted[p95Index].toFixed(3))
+  };
+}
+
+function measurePerformanceSync(operation, sampleCount = 5) {
+  operation();
+  const heapBefore = process.memoryUsage().heapUsed;
+  const samples = [];
+  for (let index = 0; index < sampleCount; index += 1) {
+    const started = performanceNowMilliseconds();
+    operation();
+    samples.push(performanceNowMilliseconds() - started);
+  }
+  return {
+    ...summarizePerformanceSamples(samples),
+    heapUsedBeforeBytes: heapBefore,
+    heapUsedAfterBytes: process.memoryUsage().heapUsed
+  };
+}
+
+async function measurePerformanceAsync(operation, sampleCount = 5) {
+  const heapBefore = process.memoryUsage().heapUsed;
+  const samples = [];
+  for (let index = 0; index < sampleCount; index += 1) {
+    const started = performanceNowMilliseconds();
+    await operation(index);
+    samples.push(performanceNowMilliseconds() - started);
+  }
+  return {
+    ...summarizePerformanceSamples(samples),
+    heapUsedBeforeBytes: heapBefore,
+    heapUsedAfterBytes: process.memoryUsage().heapUsed
+  };
+}
+
+async function runStoragePerformanceSmoke(outputPath) {
+  const assert = require('node:assert/strict');
+  const resolvedOutput = path.resolve(String(outputPath || ''));
+  if (!outputPath) throw new Error('MAI_STORAGE_PERF_OUTPUT is required.');
+  const expectedUserData = path.resolve(String(process.env.MAI_EXPECTED_USER_DATA_DIR || ''));
+  const actualUserData = path.resolve(app.getPath('userData'));
+  assert.ok(expectedUserData, 'The benchmark must assert its isolated Electron userData directory.');
+  assert.equal(actualUserData, expectedUserData, 'Electron userData must match the benchmark temporary directory.');
+
+  const smallSession = memoryState.sessions.find((session) => session.id === 'chat-ordinary-0');
+  const largeSession = memoryState.sessions.find((session) => session.id === 'chat-near-cap');
+  const submitSessionIds = Array.from({ length: 5 }, (_, index) => `chat-submit-${index}`);
+  const workSession = workStore.getSession('synthetic-work-session-0-0');
+  assert.ok(smallSession && largeSession && workSession, 'Synthetic Chat and Work fixtures did not load.');
+  assert.equal(largeSession.messages.length, 1998, 'The large Chat fixture must leave two slots for one turn.');
+
+  const output = {
+    ok: false,
+    benchmark: 'synthetic-storage-performance',
+    environment: {
+      platform: process.platform,
+      architecture: process.arch,
+      node: process.versions.node,
+      electron: process.versions.electron,
+      appVersion: app.getVersion(),
+      mainThreadBlockingMeaning: 'Synchronous operation wall time on Electron Main; this is not a GUI paint or input-latency measurement.',
+      heapMeasurementMeaning: 'heapUsed before and after each sampled block without forced GC; includes process baseline and GC noise.'
+    },
+    userDataIsolation: {
+      expectedDirectoryMatched: true,
+      resolvedDirectory: actualUserData
+    },
+    scenarios: {},
+    actionRetention: []
+  };
+
+  output.scenarios.memoryLoadAndNormalization = measurePerformanceSync(() => loadMemory(), 3);
+  output.scenarios.workLoadAndNormalization = measurePerformanceSync(() => workStore.load(), 3);
+  output.scenarios.chatStateSmall = {
+    ...measurePerformanceSync(() => {
+      const state = publicChatState(smallSession.id);
+      output.scenarios.chatStateSmallPayloadBytes = Buffer.byteLength(JSON.stringify(state));
+    }),
+    messageCount: smallSession.messages.length
+  };
+  output.scenarios.chatStateLarge = {
+    ...measurePerformanceSync(() => {
+      const state = publicChatState(largeSession.id);
+      output.scenarios.chatStateLargePayloadBytes = Buffer.byteLength(JSON.stringify(state));
+    }),
+    messageCount: largeSession.messages.length
+  };
+  output.scenarios.promptConstructionSmall = {
+    ...measurePerformanceSync(() => {
+      output.scenarios.promptConstructionSmallCharacters = buildSystemPrompt(
+        true, smallSession.messages, '', '', smallSession.id
+      ).length;
+    }),
+    messageCount: smallSession.messages.length
+  };
+  output.scenarios.promptConstructionLarge = {
+    ...measurePerformanceSync(() => {
+      output.scenarios.promptConstructionLargeCharacters = buildSystemPrompt(
+        true, largeSession.messages, '', '', largeSession.id
+      ).length;
+    }),
+    messageCount: largeSession.messages.length
+  };
+
+  const sender = { id: 987654, isDestroyed: () => false, send: () => {} };
+  output.scenarios.chatTurnAndMemoryJsonPersistence = await measurePerformanceAsync(async (index) => {
+    const response = await chatSendHandler({ sender }, {
+      sessionId: submitSessionIds[index],
+      messages: [{ role: 'user', content: '现在几点？' }]
+    });
+    assert.ok(response?.content, 'The local-time Chat path must return its ordinary reply.');
+  }, submitSessionIds.length);
+
+  const nearCapDiskBefore = fs.statSync(memoryPath()).size;
+  const nearCapResponse = await chatSendHandler({ sender }, {
+    sessionId: largeSession.id,
+    messages: [{ role: 'user', content: '现在几点？' }]
+  });
+  assert.ok(nearCapResponse?.content, 'A Chat turn with two remaining message slots must be accepted.');
+  const nearCapAfter = memoryState.sessions.find((session) => session.id === largeSession.id);
+  assert.equal(nearCapAfter.messages.length, 2000);
+  const fullCapBytes = fs.readFileSync(memoryPath());
+  let fullCapRefusalCode = '';
+  try {
+    await chatSendHandler({ sender }, {
+      sessionId: largeSession.id,
+      messages: [{ role: 'user', content: '现在几点？' }]
+    });
+  } catch (error) {
+    fullCapRefusalCode = String(error?.code || '');
+  }
+  assert.equal(fullCapRefusalCode, 'CHAT_HISTORY_LIMIT_REACHED');
+  assert.deepEqual(fs.readFileSync(memoryPath()), fullCapBytes, 'A full-cap refusal must not persist another turn.');
+  output.scenarios.chatNearCapacityBoundary = {
+    messagesBefore: 1998,
+    messagesAfterAcceptedTurn: nearCapAfter.messages.length,
+    bytesBeforeAcceptedTurn: nearCapDiskBefore,
+    bytesAfterAcceptedTurn: fullCapBytes.length,
+    fullCapRefusalCode,
+    refusalLeftBytesUnchanged: true
+  };
+
+  output.scenarios.workSnapshot = measurePerformanceSync(() => {
+    const snapshot = workStore.snapshot();
+    output.scenarios.workSnapshotPayloadBytes = Buffer.byteLength(JSON.stringify(snapshot));
+  });
+  output.scenarios.workTurnAndJsonPersistence = await measurePerformanceAsync(async (index) => {
+    workStore.appendMessage(workSession.id, {
+      role: 'user', content: `合成 Work 提交样本 ${index}`
+    });
+    workStore.appendMessage(workSession.id, {
+      role: 'assistant', content: `合成 Work 最终回复 ${index}`
+    });
+  }, 5);
+
+  const memoryBytesBeforeActionCache = fs.readFileSync(memoryPath());
+  const workBytesBeforeActionCache = fs.readFileSync(workStore.filePath);
+  const chatMessageCountBeforeActionCache = memoryState.sessions.reduce(
+    (total, session) => total + session.messages.length, 0
+  );
+  const workMessageCountBeforeActionCache = workStore.snapshot().sessions.reduce(
+    (total, session) => total + session.messages.length, 0
+  );
+  const { ActionRuntimeManager } = require('./agent/action-runtime-manager');
+  const { createActionSession } = require('./agent/action-session');
+  for (const targetCount of [100, 500, 1000]) {
+    const runSamples = [];
+    let finalManager = null;
+    for (let sampleIndex = 0; sampleIndex < 3; sampleIndex += 1) {
+      let sessionSequence = 0;
+      let clock = Date.parse('2026-10-20T00:00:00.000Z');
+      const manager = new ActionRuntimeManager({
+        getConfiguration: () => ({ enabled: true, runtime: 'synthetic-benchmark' }),
+        now: () => ++clock,
+        createSession: (input, options) => createActionSession({
+          ...input,
+          id: `synthetic-action-${sampleIndex}-${++sessionSequence}`
+        }, options)
+      });
+      manager.register({
+        id: 'synthetic-benchmark',
+        metadata: { available: true },
+        async execute({ text }) {
+          return { summary: `synthetic completion ${text}` };
+        }
+      });
+      const started = performanceNowMilliseconds();
+      for (let runIndex = 0; runIndex < targetCount; runIndex += 1) {
+        const result = await manager.execute({
+          text: `fixture action ${runIndex}`,
+          projectId: 'synthetic-project',
+          workSessionId: 'synthetic-work-session'
+        });
+        assert.equal(result.session.status, 'completed');
+      }
+      runSamples.push(performanceNowMilliseconds() - started);
+      finalManager = manager;
+    }
+    const listSamples = [];
+    let listedPayloadBytes = 0;
+    for (let index = 0; index < 5; index += 1) {
+      const started = performanceNowMilliseconds();
+      const listed = finalManager.listSessions();
+      listedPayloadBytes = Buffer.byteLength(JSON.stringify(listed));
+      listSamples.push(performanceNowMilliseconds() - started);
+    }
+    const statusSamples = [];
+    for (let index = 0; index < 5; index += 1) {
+      const started = performanceNowMilliseconds();
+      finalManager.status();
+      statusSamples.push(performanceNowMilliseconds() - started);
+    }
+    output.actionRetention.push({
+      targetRuns: targetCount,
+      runBatch: summarizePerformanceSamples(runSamples),
+      listSessions: {
+        ...summarizePerformanceSamples(listSamples),
+        payloadBytes: listedPayloadBytes
+      },
+      status: summarizePerformanceSamples(statusSamples),
+      cachedSessions: finalManager.sessions.size,
+      listedSessions: finalManager.listSessions().length,
+      controllers: finalManager.controllers.size,
+      activeSessionId: finalManager.status().activeSessionId
+    });
+  }
+  assert.deepEqual(fs.readFileSync(memoryPath()), memoryBytesBeforeActionCache,
+    'ActionSession retention must not modify persisted Chat history bytes.');
+  assert.deepEqual(fs.readFileSync(workStore.filePath), workBytesBeforeActionCache,
+    'ActionSession retention must not modify persisted Work history bytes.');
+  assert.equal(memoryState.sessions.reduce((total, session) => total + session.messages.length, 0), chatMessageCountBeforeActionCache);
+  assert.equal(workStore.snapshot().sessions.reduce((total, session) => total + session.messages.length, 0), workMessageCountBeforeActionCache);
+  output.scenarios.actionCachePersistenceIsolation = {
+    chatHistoryBytesUnchanged: true,
+    chatMessageCount: chatMessageCountBeforeActionCache,
+    workHistoryBytesUnchanged: true,
+    workMessageCount: workMessageCountBeforeActionCache
+  };
+
+  output.summary = {
+    chatSmallPayloadBytes: output.scenarios.chatStateSmallPayloadBytes,
+    chatLargePayloadBytes: output.scenarios.chatStateLargePayloadBytes,
+    workSnapshotPayloadBytes: output.scenarios.workSnapshotPayloadBytes,
+    actionsAt1000Runs: output.actionRetention.at(-1)?.cachedSessions,
+    actionListAt1000RunsPayloadBytes: output.actionRetention.at(-1)?.listSessions.payloadBytes
+  };
+  output.ok = true;
+  fs.mkdirSync(path.dirname(resolvedOutput), { recursive: true });
+  fs.writeFileSync(resolvedOutput, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
+  console.log(JSON.stringify({
+    diagnostic: 'Synthetic Storage Performance Smoke',
+    summary: output.summary,
+    actionRetention: output.actionRetention.map(({ targetRuns, cachedSessions, listedSessions, runBatch, listSessions }) => ({
+      targetRuns, cachedSessions, listedSessions, runMedianMs: runBatch.medianMs, listMedianMs: listSessions.medianMs
+    }))
+  }));
+  app.exit(0);
+}
+
 const automatedSmokeMode = process.env.MAI_MIGRATION_SMOKE === '1'
   || process.env.MAI_UI_SMOKE === '1'
   || process.env.MAI_RESTORE_PROTECTION_SMOKE === '1'
@@ -6091,7 +6364,8 @@ const automatedSmokeMode = process.env.MAI_MIGRATION_SMOKE === '1'
   || process.env.MAI_DEEPSEEK_INCREMENTAL_SMOKE === '1'
   || process.env.MAI_DEEPSEEK_REAL_SESSION_SMOKE === '1'
   || process.env.MAI_DEEPSEEK_SESSION_MESSAGE_BISECT === '1'
-  || process.env.MAI_DEEPSEEK_SESSION_MESSAGE_SHAPE_AUDIT === '1';
+  || process.env.MAI_DEEPSEEK_SESSION_MESSAGE_SHAPE_AUDIT === '1'
+  || process.env.MAI_STORAGE_PERF_SMOKE === '1';
 const gotLock = automatedSmokeMode || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -6151,6 +6425,13 @@ if (!gotLock) {
     applyLoginSetting(settings.openAtLogin);
     registerIpc();
     smokeDiagnostics?.checkpoint('services_initialized');
+    if (process.env.MAI_STORAGE_PERF_SMOKE === '1') {
+      runStoragePerformanceSmoke(process.env.MAI_STORAGE_PERF_OUTPUT).catch((error) => {
+        console.error('Synthetic storage performance smoke failed:', error?.stack || error);
+        app.exit(1);
+      });
+      return;
+    }
     if (process.env.MAI_RESTORE_PROTECTION_SMOKE === '1' && process.env.MAI_RESTORE_PROTECTION_OUTPUT) {
       runRestoreProtectionSmoke(process.env.MAI_RESTORE_PROTECTION_OUTPUT);
       return;
