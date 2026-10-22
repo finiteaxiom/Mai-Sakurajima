@@ -72,12 +72,9 @@ test('Chat loads the wallpaper presentation layer after the shared visual system
   assert.match(wallpaperCss, /pointer-events:\s*none/);
   assert.match(wallpaperCss, /object-fit:\s*cover/);
   assert.match(wallpaperCss, /grid-template-columns:\s*repeat\(auto-fit, minmax\(140px, 220px\)\)/);
-  assert.match(wallpaperCss, /--glass-frame-image:/);
-  assert.match(wallpaperCss, /radial-gradient\(/);
-  assert.match(wallpaperCss, /linear-gradient\(/);
-  assert.match(wallpaperCss, /backdrop-filter:\s*var\(--glass-blur-frame\)/);
-  assert.match(wallpaperCss, /box-shadow:[^;}]*inset/s);
-  assert.match(wallpaperCss, /liquid-glass-enter/);
+  assert.doesNotMatch(wallpaperCss, /backdrop-filter|liquid-glass-enter/);
+  // Wallpaper no longer owns all component materials or nests blur on messages.
+  assert.match(wallpaperCss, /--mai-wallpaper-overlay/);
 });
 
 test('wallpaper picker spans both settings columns so its options cannot overflow a single column', () => {
@@ -149,7 +146,7 @@ test('Chat and Work use an explicit top-level workspace switch with separate sur
 
 test('Work project and settings controls keep their intended high-contrast states', () => {
   const designCss = fs.readFileSync(path.join(renderer, 'mai-design.css'), 'utf8');
-  assert.match(wallpaperCss, /\.input-dialog-button:not\(\.input-dialog-button--primary\)/);
+  assert.match(designCss, /\.input-dialog-button--primary/);
   assert.match(designCss, /\.endpoint \{ color: var\(--mai-text-secondary\); \}/);
   assert.match(designCss, /\.endpoint code \{ color: var\(--mai-text-primary\);/);
 });
@@ -167,36 +164,16 @@ test('Chat Workspace capability stays a session-bound read-only gateway, not an 
   assert.match(preload, /workspace-capability:execute/);
 });
 
-test('narrow Work keeps the single inspector reachable as an accessible drawer', () => {
+test('responsive inspector layout stays view-only and keeps a single Workspace owner', () => {
   const html = fs.readFileSync(path.join(renderer, 'chat.html'), 'utf8');
   const script = fs.readFileSync(path.join(renderer, 'chat.js'), 'utf8');
-  const css = fs.readFileSync(path.join(renderer, 'codex-ui.css'), 'utf8');
-
-  assert.match(html, /id="work-inspector-toggle"[^>]*aria-controls="action-context"[^>]*aria-expanded="false"/);
-  assert.match(html, /id="companion-inspector-toggle"[^>]*aria-controls="companion-context"[^>]*aria-expanded="false"/);
-  assert.match(html, /id="companion-inspector-scrim"[^>]*aria-hidden="true"/);
-  assert.match(html, /id="work-inspector-scrim"[^>]*aria-hidden="true"/);
   assert.equal((html.match(/id="action-context"/g) || []).length, 1);
-  assert.doesNotMatch(html, /action-context-mobile/);
-  assert.match(script, /function setWorkInspectorOpen\(open\)/);
-  assert.match(script, /function setCompanionInspectorOpen\(open\)/);
-  assert.match(script, /window\.matchMedia\('\(max-width: 1180px\)'\)/);
-  assert.match(script, /workInspectorScrim\.addEventListener\('click', \(\) => setWorkInspectorOpen\(false\)\)/);
-  assert.match(script, /companionInspectorScrim\.addEventListener\('click', \(\) => setCompanionInspectorOpen\(false\)\)/);
-  assert.match(script, /else if \(workInspectorOpen\) setWorkInspectorOpen\(false\)/);
-  assert.match(script, /if \(agentMode\) \{\s*closeHistory\(\);/);
-  assert.match(css, /@media \(max-width: 1180px\)[\s\S]*?\.work-inspector-toggle \{ display: inline-flex; \}/);
-  assert.match(css, /@media \(max-width: 1180px\)[\s\S]*?\.companion-inspector-toggle,[\s\S]*?\.work-inspector-toggle \{ display: inline-flex; \}/);
-  assert.match(css, /companion-inspector-open \.companion-context \{[\s\S]*?transform: translateX\(0\);[\s\S]*?pointer-events: auto;/);
-  assert.match(css, /runtime-mode--agent\.sidebar-collapsed \{[\s\S]*?--companion-sidebar-width: 232px;/);
-  assert.match(css, /runtime-mode--agent #workspace-sidebar-toggle \{ display: none; \}/);
-  assert.match(wallpaperCss, /\.companion-inspector-scrim,[\s\S]*?\.work-inspector-scrim \{[\s\S]*?backdrop-filter: none;/);
-  assert.match(wallpaperCss, /\.companion-inspector-scrim,[\s\S]*?\.work-inspector-scrim \{[\s\S]*?background-color: transparent;/);
-  assert.match(css, /runtime-mode--agent #workspace-search-button \{ display: none; \}/);
-  assert.match(wallpaperCss, /\.work-inspector-scrim \{[\s\S]*?backdrop-filter: none;/);
-  assert.match(css, /\.action-context \{[\s\S]*?position: fixed;[\s\S]*?transform: translateX\(105%\);[\s\S]*?pointer-events: none;/);
-  assert.match(css, /work-inspector-open \.action-context \{[\s\S]*?transform: translateX\(0\);[\s\S]*?pointer-events: auto;/);
-  assert.doesNotMatch(css, /@media \(max-width: 1180px\) \{\s*\.ui-chat \.action-context \{ display: none; \}/);
+  assert.equal((html.match(/id="action-workspace-tree"/g) || []).length, 1);
+  assert.match(script, /function setWorkInspectorOpen/);
+  assert.match(script, /function setCompanionInspectorOpen/);
+  assert.match(html, /id="work-files-panel"/);
+  assert.match(html, /id="work-details-panel"/);
+  // Actual size, keyboard/focus and responsive behavior are checked in ui-redesign-smoke.js.
 });
 
 test('Chat exposes two local avatar triggers without a bundled catalog', () => {

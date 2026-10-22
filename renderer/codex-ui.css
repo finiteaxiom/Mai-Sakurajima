@@ -300,20 +300,6 @@
 .ui-chat .sidebar-account strong { font-size: 12px; }
 .ui-chat .sidebar-account small { color: var(--codex-text-muted); font-size: 10px; }
 
-.ui-chat .conversation-workspace {
-  grid-template-rows: 64px minmax(0, 1fr) auto auto auto;
-  overflow: hidden;
-  background: var(--codex-surface);
-}
-
-.ui-chat .conversation-heading {
-  min-height: 64px;
-  padding: 12px clamp(28px, 5vw, 72px) 10px;
-  align-items: center;
-  border-bottom: 1px solid var(--codex-border-soft);
-  background: rgba(255, 255, 255, 0.96);
-}
-
 .ui-chat .conversation-heading .eyebrow {
   margin-bottom: 3px;
   color: var(--codex-text-muted);
@@ -333,13 +319,6 @@
   border-color: var(--codex-border);
   background: var(--codex-surface);
   font-size: 10px;
-}
-
-.ui-chat .messages {
-  padding: 34px clamp(30px, 7vw, 98px) 28px;
-  gap: 20px;
-  background: var(--codex-surface);
-  scroll-padding-bottom: 28px;
 }
 
 .ui-chat .message { gap: 2px; }
@@ -421,17 +400,6 @@
   border-color: #e9bcbc;
   border-radius: 12px;
   background: #fff5f5;
-}
-
-.ui-chat .composer {
-  min-height: 72px;
-  margin: 0 clamp(30px, 7vw, 98px);
-  padding: 12px;
-  gap: 9px;
-  border: 1px solid var(--codex-border-strong);
-  border-radius: 24px;
-  background: var(--codex-surface);
-  box-shadow: var(--codex-shadow-float);
 }
 
 .ui-chat .composer:focus-within {
@@ -525,12 +493,6 @@
 .ui-chat .moment-reply-button:hover { background: var(--codex-accent-strong); }
 
 .ui-chat .send-button--stop { border-color: var(--codex-text); background: var(--codex-text); }
-
-.ui-chat .privacy-note {
-  margin: 10px clamp(30px, 7vw, 98px) 14px;
-  color: var(--codex-text-muted);
-  font-size: 10px;
-}
 
 /* The right context behaves like Codex's inspector: informational, quiet and
    visually subordinate to the conversation. */
@@ -975,14 +937,6 @@
 
 /* Responsive density ----------------------------------------------------- */
 @media (max-width: 1180px) {
-  .ui-chat .chat-app {
-    --companion-sidebar-width: 232px;
-    --companion-context-width: 0px;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
-  }
   .ui-chat .companion-context { display: none; }
   .ui-chat .workspace-topbar {
     background: linear-gradient(90deg, var(--codex-sidebar) 0 232px, var(--codex-surface) 232px 100%);
@@ -990,7 +944,6 @@
 }
 
 @media (max-width: 860px) {
-  .ui-chat .chat-app { --companion-sidebar-width: 72px; min-width: 680px; }
   .ui-chat .workspace-topbar {
     background: linear-gradient(90deg, var(--codex-sidebar) 0 72px, var(--codex-surface) 72px 100%);
   }
@@ -1046,19 +999,6 @@
   display: none !important;
 }
 
-.ui-chat .chat-app.runtime-mode--agent .workspace-topbar {
-  background: linear-gradient(90deg, #f2f3f5 0 var(--companion-sidebar-width), #fff var(--companion-sidebar-width) 100%);
-}
-
-.ui-chat .chat-app.runtime-mode--agent .conversation-workspace { background: #fff; }
-.ui-chat .chat-app.runtime-mode--agent .conversation-heading { background: #fff; }
-.ui-chat .chat-app.runtime-mode--agent .conversation-heading .eyebrow { color: #55606d; }
-.ui-chat .chat-app.runtime-mode--agent .conversation-badges span {
-  color: #465261;
-  border-color: #d8dde3;
-  background: #f8fafb;
-}
-
 .ui-chat .agent-mode-sidebar {
   min-height: 0;
   display: flex;
@@ -1094,22 +1034,22 @@
 .ui-chat .agent-mode-sidebar__intro strong,
 .ui-chat .agent-mode-sidebar__intro small { display: block; }
 .ui-chat .agent-mode-sidebar__intro strong { color: var(--codex-text); font-size: 14px; }
-.ui-chat .agent-mode-sidebar__intro small { margin-top: 3px; color: var(--codex-text-muted); font-size: 10px; line-height: 1.4; }
+.ui-chat .agent-mode-sidebar__intro small { margin-top: 3px; color: var(--codex-text-muted); font-size: 12px; line-height: 1.4; }
 
 .ui-chat .agent-new-action-button {
   min-height: 40px;
   padding: 0 12px;
   color: #fff;
-  border: 1px solid #2f3742;
+  border: 1px solid var(--mai-accent);
   border-radius: 10px;
-  background: #2f3742;
+  background: var(--mai-accent);
   text-align: left;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
-.ui-chat .agent-new-action-button:hover { background: #20262e; }
+.ui-chat .agent-new-action-button:hover { background: var(--mai-accent-hover); }
 .ui-chat .agent-new-action-button--subtle {
   min-height: 34px;
   color: var(--codex-text-soft);
@@ -1124,7 +1064,7 @@
   justify-content: space-between;
   padding: 5px 7px 0;
   color: var(--codex-text-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 .ui-chat .agent-mode-sidebar__heading button,
@@ -1145,7 +1085,7 @@
 .ui-chat .agent-project-group { display: grid; gap: 2px; }
 .ui-chat .agent-project-group__tasks { margin-left: 11px; padding-left: 7px; display: grid; gap: 2px; border-left: 1px solid var(--codex-border-soft); }
 .ui-chat .agent-project-group--recent { margin-top: 8px; }
-.ui-chat .agent-project-group__heading { padding: 5px 7px 2px; color: var(--codex-text-muted); font-size: 10px; font-weight: 700; }
+.ui-chat .agent-project-group__heading { padding: 5px 7px 2px; color: var(--codex-text-muted); font-size: 12px; font-weight: 700; }
 .ui-chat .agent-project-group__tasks--recent { margin-left: 0; padding-left: 0; border-left: 0; }
 .ui-chat .agent-session-item--nested { padding: 7px 8px; }
 .ui-chat .agent-session-item {
@@ -1161,10 +1101,10 @@
   cursor: pointer;
 }
 .ui-chat .agent-session-item:hover,
-.ui-chat .agent-session-item--active { color: var(--codex-text); background: #e8ebee; }
-.ui-chat .agent-session-item strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.ui-chat .agent-session-item small { color: var(--codex-text-muted); font-size: 9px; }
-.ui-chat .agent-session-empty { margin: 0; padding: 3px 8px; color: var(--codex-text-muted); font-size: 10px; }
+.ui-chat .agent-session-item--active { color: var(--codex-text); background: var(--mai-surface-active); }
+.ui-chat .agent-session-item strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat .agent-session-item small { color: var(--codex-text-muted); font-size: 12px; }
+.ui-chat .agent-session-empty { margin: 0; padding: 3px 8px; color: var(--codex-text-muted); font-size: 12px; }
 
 .ui-chat .agent-mode-sidebar__footer {
   margin-top: auto;
@@ -1173,8 +1113,8 @@
   gap: 7px;
   border-top: 1px solid var(--codex-border-soft);
 }
-.ui-chat .agent-mode-sidebar__footer small { color: var(--codex-text-muted); font-size: 9px; line-height: 1.45; }
-.ui-chat .agent-sidebar-link { padding: 0; text-align: left; font-size: 11px; }
+.ui-chat .agent-mode-sidebar__footer small { color: var(--codex-text-muted); font-size: 12px; line-height: 1.45; }
+.ui-chat .agent-sidebar-link { padding: 0; text-align: left; font-size: 13px; }
 
 .ui-chat .action-context {
   grid-area: context;
@@ -1197,47 +1137,47 @@
   background: #fff;
 }
 .ui-chat .action-context__eyebrow,
-.ui-chat .action-context__section > span { color: var(--codex-text-muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.ui-chat .action-context__section > span { color: var(--codex-text-muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
 .ui-chat .action-context__hero h3 { margin: 7px 0 5px; font-size: 16px; }
 .ui-chat .action-context__hero p,
-.ui-chat .action-context__section p { margin: 0; color: var(--codex-text-soft); font-size: 11px; line-height: 1.55; }
+.ui-chat .action-context__section p { margin: 0; color: var(--codex-text-soft); font-size: 13px; line-height: 1.55; }
 .ui-chat .action-context__capabilities { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px; }
-.ui-chat .action-context__capabilities span { padding: 4px 7px; color: #465261; border: 1px solid #d9dfe5; border-radius: 999px; background: #f8fafb; font-size: 9px; }
-.ui-chat .action-context .action-result-steps { margin: 8px 0 0; padding-left: 18px; font-size: 10px; }
-.ui-chat .workspace-explorer__path { overflow: hidden; margin: 7px 0 0; color: var(--codex-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat .action-context__capabilities span { padding: 4px 7px; color: var(--mai-text-secondary); border: 1px solid #d9dfe5; border-radius: 999px; background: var(--mai-surface); font-size: 12px; }
+.ui-chat .action-context .action-result-steps { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+.ui-chat .workspace-explorer__path { overflow: hidden; margin: 7px 0 0; color: var(--codex-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .ui-chat .workspace-explorer__actions { display: flex; gap: 7px; margin-top: 9px; }
-.ui-chat .workspace-explorer__actions .button { flex: 1; min-width: 0; padding: 7px 8px; font-size: 10px; }
-.ui-chat .workspace-explorer { max-height: 254px; margin-top: 10px; padding: 7px; overflow: auto; border: 1px solid #e0e4e8; border-radius: 10px; background: #fafbfc; }
-.ui-chat .workspace-explorer__root { display: flex; min-width: 0; padding: 4px 5px; color: var(--codex-text); font-size: 10px; }
+.ui-chat .workspace-explorer__actions .button { flex: 1; min-width: 0; padding: 7px 8px; font-size: 12px; }
+.ui-chat .workspace-explorer { max-height: 254px; margin-top: 10px; padding: 7px; overflow: auto; border: 1px solid var(--mai-border); border-radius: 10px; background: var(--mai-surface); }
+.ui-chat .workspace-explorer__root { display: flex; min-width: 0; padding: 4px 5px; color: var(--codex-text); font-size: 12px; }
 .ui-chat .workspace-explorer__root strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-chat .workspace-explorer__entry { width: 100%; min-width: 0; padding: 5px 5px 5px calc(6px + var(--workspace-depth) * 13px); display: grid; grid-template-columns: 12px minmax(0, 1fr); align-items: center; gap: 3px; color: var(--codex-text-soft); border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
-.ui-chat .workspace-explorer__entry:hover { background: #edf0f3; color: var(--codex-text); }
-.ui-chat .workspace-explorer__entry--selected { color: #65304a; background: #f7e8ef; box-shadow: inset 0 0 0 1px #ecc2d4; }
-.ui-chat .workspace-explorer__icon { color: #717a84; font-size: 10px; text-align: center; }
-.ui-chat .workspace-explorer__name { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.ui-chat .workspace-explorer__entry[data-workspace-kind="folder"] .workspace-explorer__name::before { content: '📁'; margin-right: 5px; font-size: 10px; }
-.ui-chat .workspace-explorer__entry[data-workspace-kind="file"] .workspace-explorer__name::before { content: '📄'; margin-right: 5px; font-size: 10px; }
-.ui-chat .workspace-explorer__empty { margin: 9px 1px 0; color: var(--codex-text-muted); font-size: 10px; line-height: 1.5; }
-.ui-chat .workspace-explorer__stale { margin: 8px 1px 0; color: var(--codex-warning); font-size: 10px; line-height: 1.45; }
+.ui-chat .workspace-explorer__entry:hover { background: var(--mai-surface-hover); color: var(--codex-text); }
+.ui-chat .workspace-explorer__entry--selected { color: var(--mai-text-primary); background: var(--mai-surface-active); box-shadow: inset 0 0 0 1px var(--mai-accent); }
+.ui-chat .workspace-explorer__icon { color: var(--mai-text-muted); font-size: 12px; text-align: center; }
+.ui-chat .workspace-explorer__name { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat .workspace-explorer__entry[data-workspace-kind="folder"] .workspace-explorer__name::before { content: '📁'; margin-right: 5px; font-size: 12px; }
+.ui-chat .workspace-explorer__entry[data-workspace-kind="file"] .workspace-explorer__name::before { content: '📄'; margin-right: 5px; font-size: 12px; }
+.ui-chat .workspace-explorer__empty { margin: 9px 1px 0; color: var(--codex-text-muted); font-size: 12px; line-height: 1.5; }
+.ui-chat .workspace-explorer__stale { margin: 8px 1px 0; color: var(--codex-warning); font-size: 12px; line-height: 1.45; }
 .ui-chat .workspace-explorer__truncated,
-.ui-chat .workspace-explorer__child-empty { margin: 5px 5px 5px calc(6px + var(--workspace-depth, 0) * 13px); color: var(--codex-text-muted); font-size: 9px; line-height: 1.45; }
+.ui-chat .workspace-explorer__child-empty { margin: 5px 5px 5px calc(6px + var(--workspace-depth, 0) * 13px); color: var(--codex-text-muted); font-size: 12px; line-height: 1.45; }
 .ui-chat .workspace-preview-overlay { position: fixed; z-index: 90; inset: 0; padding: 28px; display: grid; place-items: center; background: rgba(35, 39, 45, 0.28); backdrop-filter: blur(3px); }
 .ui-chat .workspace-preview-overlay[hidden] { display: none; }
 .ui-chat .workspace-preview-dialog { width: min(760px, 100%); max-height: min(78vh, 720px); padding: 16px; display: grid; gap: 7px; overflow: hidden; color: var(--codex-text); border: 1px solid var(--codex-border); border-radius: 14px; background: var(--codex-surface); box-shadow: 0 24px 56px rgba(31, 35, 41, 0.24); }
 .ui-chat .workspace-preview__header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ui-chat .workspace-preview__header strong { overflow: hidden; color: var(--codex-text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.ui-chat .workspace-preview__close { padding: 2px 5px; color: var(--codex-text-soft); border: 0; border-radius: 5px; background: transparent; font: inherit; font-size: 9px; cursor: pointer; }
+.ui-chat .workspace-preview__header strong { overflow: hidden; color: var(--codex-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat .workspace-preview__close { padding: 2px 5px; color: var(--codex-text-soft); border: 0; border-radius: 5px; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .ui-chat .workspace-preview__close:hover { color: var(--codex-text); background: var(--codex-surface-hover); }
 .ui-chat .workspace-preview small,
-.ui-chat .workspace-preview__status { margin: 0; overflow: hidden; color: var(--codex-text-muted); font-size: 9px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-.ui-chat .workspace-preview__content { min-height: 0; max-height: min(56vh, 520px); margin: 3px 0 0; padding: 8px; overflow: auto; color: #34383d; border: 1px solid #e6e9ec; border-radius: 7px; background: #fafbfc; font: 10px/1.55 Consolas, "Cascadia Code", monospace; white-space: pre-wrap; word-break: break-word; }
+.ui-chat .workspace-preview__status { margin: 0; overflow: hidden; color: var(--codex-text-muted); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat .workspace-preview__content { min-height: 0; max-height: min(56vh, 520px); margin: 3px 0 0; padding: 8px; overflow: auto; color: #34383d; border: 1px solid #e6e9ec; border-radius: 7px; background: var(--mai-surface); font: 10px/1.55 Consolas, "Cascadia Code", monospace; white-space: pre-wrap; word-break: break-word; }
 .ui-chat .work-operation-results { margin-top: 8px; display: grid; gap: 6px; }
-.ui-chat .work-operation-result { padding: 8px 9px; display: grid; gap: 3px; border: 1px solid var(--codex-border); border-radius: 9px; background: #fafbfc; }
+.ui-chat .work-operation-result { padding: 8px 9px; display: grid; gap: 3px; border: 1px solid var(--codex-border); border-radius: 9px; background: var(--mai-surface); }
 .ui-chat .work-operation-result--success { border-color: #b9ddce; background: #f2faf6; }
 .ui-chat .work-operation-result--failure { border-color: #ebc4c4; background: #fff7f7; }
-.ui-chat .work-operation-result strong { color: var(--codex-text); font-size: 11px; }
+.ui-chat .work-operation-result strong { color: var(--codex-text); font-size: 13px; }
 .ui-chat .work-operation-result p,
-.ui-chat .work-operation-result small { margin: 0; color: var(--codex-text-soft); font-size: 10px; line-height: 1.45; word-break: break-word; }
+.ui-chat .work-operation-result small { margin: 0; color: var(--codex-text-soft); font-size: 12px; line-height: 1.45; word-break: break-word; }
 
 .ui-chat .companion-inspector-toggle,
 .ui-chat .companion-inspector-scrim,
@@ -1255,70 +1195,8 @@
   gap: 10px;
   color: var(--codex-text-soft);
   border-color: #d9dfe5;
-  background: #f8fafb;
+  background: var(--mai-surface);
 }
 .ui-chat .chat-app.runtime-mode--agent .agent-runtime-panel p { margin: 0; font-size: 12px; }
 .ui-chat .chat-app.runtime-mode--agent .agent-runtime-panel__actions { margin-left: auto; }
-.ui-chat .chat-app.runtime-mode--agent .agent-runtime-panel button { background: #2f3742; }
-
-@media (max-width: 1180px) {
-  .ui-chat .chat-app.runtime-mode--chat .companion-inspector-toggle,
-  .ui-chat .chat-app.runtime-mode--agent .work-inspector-toggle { display: inline-flex; }
-
-  .ui-chat .companion-inspector-scrim,
-  .ui-chat .work-inspector-scrim { display: block; }
-
-  .ui-chat .chat-app.runtime-mode--chat .companion-context {
-    position: fixed;
-    z-index: 45;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    width: min(320px, 88vw);
-    padding: 16px 14px;
-    display: flex;
-    transform: translateX(105%);
-    visibility: hidden;
-    pointer-events: none;
-    box-shadow: -16px 0 36px rgba(36, 31, 31, 0.16);
-    transition: transform 180ms ease, visibility 0s linear 180ms;
-  }
-
-  .ui-chat .chat-app.runtime-mode--chat.companion-inspector-open .companion-context {
-    transform: translateX(0);
-    visibility: visible;
-    pointer-events: auto;
-    transition: transform 180ms ease;
-  }
-
-  .ui-chat .chat-app.runtime-mode--agent .action-context {
-    position: fixed;
-    z-index: 45;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    width: min(320px, 88vw);
-    padding: 16px 14px;
-    display: flex;
-    transform: translateX(105%);
-    visibility: hidden;
-    pointer-events: none;
-    box-shadow: -16px 0 36px rgba(36, 31, 31, 0.16);
-    transition: transform 180ms ease, visibility 0s linear 180ms;
-  }
-
-  .ui-chat .chat-app.runtime-mode--agent.work-inspector-open .action-context {
-    transform: translateX(0);
-    visibility: visible;
-    pointer-events: auto;
-    transition: transform 180ms ease;
-  }
-}
-
-@media (min-width: 861px) {
-  .ui-chat .chat-app.runtime-mode--agent.sidebar-collapsed {
-    --companion-sidebar-width: 232px;
-  }
-
-  .ui-chat .chat-app.runtime-mode--agent #workspace-sidebar-toggle { display: none; }
-}
+.ui-chat .chat-app.runtime-mode--agent .agent-runtime-panel button { background: var(--mai-accent); }

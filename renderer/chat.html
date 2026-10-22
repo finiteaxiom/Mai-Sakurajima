@@ -7,8 +7,8 @@
     <title>Mai Sakurajima</title>
     <link rel="stylesheet" href="chat.css">
     <link rel="stylesheet" href="light-theme.css">
-    <link rel="stylesheet" href="workspace-layout.css">
     <link rel="stylesheet" href="codex-ui.css">
+    <link rel="stylesheet" href="workspace-layout.css">
     <link rel="stylesheet" href="wallpaper.css">
     <link rel="stylesheet" href="mai-design.css">
   </head>
@@ -38,6 +38,10 @@
           </div>
         </div>
         <div class="workspace-brand"><span id="workspace-location">陪伴与对话</span></div>
+        <nav class="mode-tabs" aria-label="工作模式">
+          <button class="mode-tab" data-mode-tab="chat" type="button" aria-pressed="true">Chat · 陪伴</button>
+          <button class="mode-tab" data-mode-tab="agent" type="button" aria-pressed="false">Work · 工作</button>
+        </nav>
         <div class="workspace-topbar__actions">
           <button id="companion-inspector-toggle" class="workspace-chrome-button companion-inspector-toggle" type="button" aria-label="打开陪伴信息面板" title="陪伴信息" aria-controls="companion-context" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M9 4v16M13 9h3M13 13h3"></path></svg>
@@ -52,6 +56,7 @@
       </div>
 
       <header class="chat-header">
+        <div class="sidebar-scroll mode-feature mode-feature--chat">
         <div class="sidebar-identity mode-feature mode-feature--chat">
           <button id="mai-avatar-button" class="portrait-wrap avatar-trigger" type="button" aria-label="更换麻衣头像" title="更换麻衣头像" aria-haspopup="dialog"><img id="portrait" src="../assets/mai-profile.png" alt=""></button>
           <div class="identity">
@@ -90,6 +95,7 @@
           <div id="recent-list" class="sidebar-collection"></div>
           <p id="recent-empty" class="sidebar-empty">还没有历史对话</p>
         </section>
+        </div>
         <div class="sidebar-tools mode-feature mode-feature--chat">
           <button id="voice-call-button" class="icon-button nav-item" type="button" aria-label="和麻衣语音通话" title="实时语音通话" data-label="语音通话">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 4.8 5.3c-1.1.7-.8 3.8 1.8 7.9s5.2 5.8 6.3 5.1l2.4-1.5-2.8-4.3-2.1 1.3c-.8-.6-1.6-1.6-2.3-2.7s-1.2-2.3-1.4-3.2l2.1-1.3-1.6-2.8Z"></path><path d="M14.2 5.4c1.8.4 3.2 1.8 3.6 3.6M14.8 2c3.3.7 5.9 3.3 6.6 6.6"></path></svg>
@@ -120,9 +126,10 @@
 
       <section class="conversation-workspace">
         <header class="conversation-heading">
-          <div><span id="conversation-runtime-eyebrow" class="eyebrow">MAI · CURRENT CONVERSATION</span><h2 id="active-session-title">新对话</h2></div>
+          <div><span id="conversation-runtime-eyebrow" class="eyebrow">陪你聊聊</span><h2 id="active-session-title">新对话</h2></div>
           <div class="conversation-badges"><span id="conversation-model-badge">DeepSeek</span><span id="conversation-memory-badge">记忆已开启</span></div>
         </header>
+        <button id="scroll-latest" class="scroll-latest" type="button" hidden>↓ 回到底部</button>
         <section id="messages" class="messages" aria-live="polite">
           <article class="message message--assistant"><div class="bubble">我在。今天发生了什么，想先从哪件事说起？</div></article>
         </section>
@@ -146,6 +153,7 @@
       </section>
 
       <aside id="companion-context" class="companion-context mode-feature mode-feature--chat" aria-label="陪伴信息">
+        <button id="close-companion-inspector" class="icon-button inspector-close" type="button" aria-label="关闭陪伴信息">×</button>
         <section class="companion-presence-card">
           <img src="../assets/mai-profile.png" alt="樱岛麻衣">
           <div><strong>樱岛麻衣</strong><p><span class="presence-dot"></span>一直在这里陪着你</p></div>
@@ -175,6 +183,31 @@
         <button id="open-companion-center-button" class="companion-center-button" type="button">打开生活陪伴 <span>↗</span></button>
       </aside>
       <aside id="action-context" class="action-context mode-feature mode-feature--agent" aria-label="Work 工作区信息">
+        <button id="close-work-inspector" class="icon-button inspector-close" type="button" aria-label="关闭工作信息">×</button>
+        <div class="inspector-tabs" role="tablist" aria-label="工作信息视图">
+          <button id="work-files-tab" role="tab" aria-selected="true" aria-controls="work-files-panel" type="button">文件</button>
+          <button id="work-details-tab" role="tab" aria-selected="false" aria-controls="work-details-panel" tabindex="-1" type="button">运行详情</button>
+        </div>
+        <div id="work-files-panel" role="tabpanel" aria-labelledby="work-files-tab">
+        <section class="action-context__section">
+          <span>Project Workspace</span>
+          <p id="action-workspace-status">未选择；仅可使用安全本地工具。</p>
+          <p id="action-workspace-path" class="workspace-explorer__path" title="">选择后将在这里显示文件结构。</p>
+          <div class="workspace-explorer__actions">
+            <button id="select-action-workspace" class="button button--secondary" type="button">选择项目 Workspace</button>
+            <button id="refresh-action-workspace" class="button button--secondary" type="button" disabled>刷新</button>
+          </div>
+          <p id="action-workspace-stale" class="workspace-explorer__stale" hidden>目录可能已发生变化，刷新以查看最新内容。</p>
+          <div id="action-workspace-tree" class="workspace-explorer" role="tree" aria-label="Project Workspace 文件树"></div>
+          <p id="action-workspace-empty" class="workspace-explorer__empty">选择 Workspace 后可查看其中的文件和文件夹。</p>
+        </section>
+        </div>
+        <div id="work-details-panel" role="tabpanel" aria-labelledby="work-details-tab" hidden>
+        <section class="action-context__section">
+          <span>运行详情</span>
+          <ol id="agent-event-log" class="action-result-steps" aria-label="当前任务事件"></ol>
+          <p id="agent-event-empty">当前没有运行详情。</p>
+        </section>
         <section class="action-context__hero">
           <span class="action-context__eyebrow">WORK</span>
           <h3>独立工作空间</h3>
@@ -196,23 +229,7 @@
           <span>当前项目</span>
           <p id="action-project-status">尚未选择项目。</p>
         </section>
-        <section class="action-context__section">
-          <span>Project Workspace</span>
-          <p id="action-workspace-status">未选择；仅可使用安全本地工具。</p>
-          <p id="action-workspace-path" class="workspace-explorer__path" title="">选择后将在这里显示文件结构。</p>
-          <div class="workspace-explorer__actions">
-            <button id="select-action-workspace" class="button button--secondary" type="button">选择项目 Workspace</button>
-            <button id="refresh-action-workspace" class="button button--secondary" type="button" disabled>刷新</button>
-          </div>
-          <p id="action-workspace-stale" class="workspace-explorer__stale" hidden>目录可能已发生变化，刷新以查看最新内容。</p>
-          <div id="action-workspace-tree" class="workspace-explorer" role="tree" aria-label="Project Workspace 文件树"></div>
-          <p id="action-workspace-empty" class="workspace-explorer__empty">选择 Workspace 后可查看其中的文件和文件夹。</p>
-        </section>
-        <section class="action-context__section">
-          <span>运行详情</span>
-          <ol id="agent-event-log" class="action-result-steps" aria-label="当前任务事件"></ol>
-          <p id="agent-event-empty">当前没有运行详情。</p>
-        </section>
+        </div>
       </aside>
       <div id="companion-inspector-scrim" class="history-scrim companion-inspector-scrim history-scrim--hidden" aria-hidden="true"></div>
       <div id="work-inspector-scrim" class="history-scrim work-inspector-scrim history-scrim--hidden" aria-hidden="true"></div>
@@ -876,6 +893,7 @@
     <script src="work-renderer-controller.js"></script>
     <script src="workspace-explorer-controller.js"></script>
     <script src="work-renderer-bindings.js"></script>
+    <script src="ui-presentation.js"></script>
     <script src="chat.js"></script>
   </body>
 </html>

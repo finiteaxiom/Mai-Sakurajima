@@ -1744,6 +1744,7 @@ function applyAvatarSelections() {
   const maiAvatarPath = avatarPath('mai');
   portrait.src = maiAvatarPath;
   agentPortrait.src = maiAvatarPath;
+  document.querySelectorAll('.message-avatar, .companion-presence-card img').forEach((image) => { image.src = maiAvatarPath; });
   userAvatar.src = avatarPath('user');
   maiAvatarButton.dataset.avatarId = chatConfig.avatarSelections?.mai || '';
   agentAvatarButton.dataset.avatarId = chatConfig.avatarSelections?.mai || '';
@@ -2824,7 +2825,7 @@ function renderCompanionWorkspace() {
     renderActionWorkspace();
     return;
   }
-  conversationRuntimeEyebrow.textContent = 'MAI · CURRENT CONVERSATION';
+  conversationRuntimeEyebrow.textContent = '陪你聊聊';
   runtimePrivacyNote.textContent = 'Mai 会在本地保存对话与记忆；模型请求仅发送到你选择的 Provider。';
   messageInput.placeholder = '想和麻衣聊些什么？';
   const turnState = chatTurnCoordinator.getState();
@@ -2856,6 +2857,7 @@ function setRuntimeMode(mode) {
   setWorkInspectorOpen(false);
   setCompanionInspectorOpen(false);
   const nextMode = mode === 'agent' ? 'agent' : 'chat';
+  const modeChanged = nextMode !== selectedRuntimeMode;
   if (nextMode !== selectedRuntimeMode) runtimeModeGeneration += 1;
   selectedRuntimeMode = nextMode;
   workRendererBindings.activateMode(selectedRuntimeMode);
@@ -2866,6 +2868,7 @@ function setRuntimeMode(mode) {
   syncWorkInspectorDrawer();
   syncCompanionInspectorDrawer();
   runtimeCurrentLabel.textContent = agentMode ? 'Work' : 'Chat';
+  document.querySelectorAll('[data-mode-tab]').forEach((tab) => tab.setAttribute('aria-pressed', String(tab.dataset.modeTab === selectedRuntimeMode)));
   for (const option of runtimeOptions) {
     option.setAttribute('aria-checked', String(option.dataset.runtimeMode === selectedRuntimeMode));
   }
@@ -2880,14 +2883,15 @@ function setRuntimeMode(mode) {
     loadHistory(conversation);
   }
   renderCompanionWorkspace();
+  if (modeChanged) globalThis.window?.maiPresentation?.animateView(messagesElement);
 }
 
 function isWorkInspectorDrawer() {
-  return selectedRuntimeMode === 'agent' && window.matchMedia('(max-width: 1180px)').matches;
+  return selectedRuntimeMode === 'agent' && window.matchMedia('(max-width: 1319px)').matches;
 }
 
 function isCompanionInspectorDrawer() {
-  return selectedRuntimeMode === 'chat' && window.matchMedia('(max-width: 1180px)').matches;
+  return selectedRuntimeMode === 'chat';
 }
 
 function syncCompanionInspectorDrawer() {
@@ -3106,7 +3110,14 @@ function refreshWorkspaceExplorer() {
   return workRendererBindings.refreshWorkspace(workRendererBindings.getExplorerIdentity());
 }
 
+let lastWorkViewKey = '';
 function renderActionWorkspace() {
+  const workViewKey = `${selectedRuntimeMode}:${activeWorkProjectId}:${activeWorkSessionId}`;
+  const preserveScroll = workViewKey === lastWorkViewKey;
+  const oldScroll = messagesElement.scrollTop;
+  const wasFollowing = globalThis.window?.maiPresentation?.isFollowing() !== false;
+  lastWorkViewKey = workViewKey;
+  globalThis.window?.maiPresentation?.beginHistory();
   const workState = workRendererBindings.getState();
   const workBusy = workState.busy;
   const available = actionRuntimeStatus?.available === true;
@@ -3114,7 +3125,7 @@ function renderActionWorkspace() {
   const selectedSession = activeWorkSession();
   workspaceLocation.textContent = '工作空间';
   activeSessionTitle.textContent = selectedSession?.title || workProjectLabel(project);
-  conversationRuntimeEyebrow.textContent = 'WORK · PROJECT';
+  conversationRuntimeEyebrow.textContent = '专注于此刻的工作';
   conversationModelBadge.textContent = available ? 'Work 已就绪' : 'Work 未启用';
   conversationMemoryBadge.textContent = '工作记录独立';
   runtimePrivacyNote.textContent = 'Work 的任务记录与陪伴聊天、长期记忆完全分开；完成内容不会自动写入记忆。';
@@ -3146,7 +3157,7 @@ function renderActionWorkspace() {
   sendButton.disabled = !available || !project || workBusy;
   messagesElement.innerHTML = '';
   if (selectedSession) {
-    for (const item of selectedSession.messages || []) addMessage(item.role, item.content, { createdAt: item.createdAt, operationResults: item.operationResults });
+    for (const item of selectedSession.messages || []) addMessage(item.role, item.content, { history: true, createdAt: item.createdAt, operationResults: item.operationResults });
   } else if (!project) {
     addMessage('assistant', '还没有 Work Project。创建一个项目，把相关任务和 Workspace 放在一起。');
   } else if (!project.workspacePath) {
@@ -3156,6 +3167,7 @@ function renderActionWorkspace() {
   }
   if (workState.executionPending) addPendingMessage();
   renderWorkProjects();
+  globalThis.window?.maiPresentation?.endHistory({ preserve: preserveScroll, top: oldScroll, follow: wasFollowing });
 }
 
 function refreshWorkData() {
@@ -3362,7 +3374,7 @@ async function clearAllHistory() {
 }
 
 function scrollToLatest() {
-  messagesElement.scrollTop = messagesElement.scrollHeight;
+  globalThis.window?.maiPresentation?.scrollLatest();
 }
 
 function messageTimestamp(value = Date.now()) {
@@ -3385,7 +3397,14 @@ function messageTimestamp(value = Date.now()) {
 function addMessage(role, content, options = {}) {
   messagesElement.querySelector('.runtime-welcome')?.remove();
   const article = document.createElement('article');
-  article.className = `message message--${role}`;
+  article.className = `message message--${role}${options.history ? "" : " message--new"}`;
+  if (role === 'assistant') {
+    const avatar = document.createElement('img');
+    avatar.className = 'message-avatar';
+    avatar.alt = '';
+    avatar.src = avatarPath('mai');
+    article.appendChild(avatar);
+  }
   if (options.messageId) {
     article.dataset.messageId = String(options.messageId);
   }
@@ -4753,6 +4772,7 @@ function loadHistory(history) {
     showWelcomeMessage();
     return;
   }
+  globalThis.window?.maiPresentation?.beginHistory();
   messagesElement.innerHTML = '';
   conversation = history
     .filter((message) => ['user', 'assistant'].includes(message.role) && message.content)
@@ -4763,11 +4783,13 @@ function loadHistory(history) {
       continue;
     }
     addMessage(message.role, message.content, {
+      history: true,
       proactive: message.proactive === true,
       createdAt: message.createdAt,
       messageId: message.id
     });
   }
+  globalThis.window?.maiPresentation?.endHistory();
   const latestAssistant = history.slice().reverse().find((message) => message.role === 'assistant');
   if (latestAssistant) {
     setMood(latestAssistant);
@@ -4793,6 +4815,29 @@ runtimeSwitcherButton.addEventListener('click', () => {
   runtimeSwitcherMenu.hidden = !willOpen;
   runtimeSwitcherButton.setAttribute('aria-expanded', String(willOpen));
 });
+document.querySelectorAll('[data-mode-tab]').forEach((tab) => tab.addEventListener('click', () => setRuntimeMode(tab.dataset.modeTab)));
+document.getElementById('close-companion-inspector').addEventListener('click', () => setCompanionInspectorOpen(false));
+document.getElementById('close-work-inspector').addEventListener('click', () => setWorkInspectorOpen(false));
+for (const name of ['files', 'details']) {
+  const tab = document.getElementById(`work-${name}-tab`);
+  const select = () => {
+    for (const other of ['files', 'details']) {
+      const active = name === other;
+      const button = document.getElementById(`work-${other}-tab`);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+      document.getElementById(`work-${other}-panel`).hidden = !active;
+    }
+  };
+  tab.addEventListener('click', select);
+  tab.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 'files' : event.key === 'End' ? 'details' : name === 'files' ? 'details' : 'files';
+    const target = document.getElementById(`work-${next}-tab`);
+    target.click(); target.focus();
+  });
+}
 runtimeOptions.forEach((option) => option.addEventListener('click', () => setRuntimeMode(option.dataset.runtimeMode)));
 workInspectorToggle.addEventListener('click', () => setWorkInspectorOpen(!workInspectorOpen));
 workInspectorScrim.addEventListener('click', () => setWorkInspectorOpen(false));

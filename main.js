@@ -4814,7 +4814,8 @@ async function runUiSmoke(outputPath) {
         }, 700);
       }, 80);
     })`);
-    targetWindow.setSize(1300, 760);
+    // Wide-layout smoke uses the 1320 CSS-pixel breakpoint plus native frame space.
+    targetWindow.setSize(1440, 900);
     await new Promise((resolve) => setTimeout(resolve, 100));
     const workInspectorWide = await contents.executeJavaScript(`new Promise((resolve) => {
       document.querySelector('.runtime-option[data-runtime-mode="agent"]')?.click();
