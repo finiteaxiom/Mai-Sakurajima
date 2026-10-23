@@ -33,6 +33,8 @@ Chat 通过 `chat:get-config` 取得公开偏好并通过既有 `chat:save-confi
 
 ## Screen principles
 
+正常启动时，`startup-animation.js` 显示独立的无边框启动窗口，播放 `renderer/media/mai-startup-v1.mp4`（第一版，3 秒、60 fps）。播放结束、点击跳过或按 Esc 后继续原有桌宠启动流程。播放失败自动略过，主进程设置 8 秒兜底；用户 off / reduced 或系统减少动画时跳过。该窗口不配置 preload、不访问用户数据、不增加 IPC。媒体随 renderer 打包，保留用户壁纸和头像仍只能在运行时选择的边界。
+
 当前外壳采用暖白、雾灰、薰衣草紫选中态与淡玫瑰用户消息。深色及系统主题使用同一套语义 token；透明与模糊集中在顶栏、侧栏和输入区域，正文使用高不透明度表面保护可读性。`wallpaper.css` 仅负责用户本地壁纸与选择器，不再覆盖整个界面的颜色。
 
 - Chat：Mai 回复以头像标记与文字为主，用户消息才保留轻量表面；composer 是底部的悬浮主操作。

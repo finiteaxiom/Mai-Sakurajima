@@ -25,6 +25,7 @@
     "files": [
       "main.js",
       "window-manager.js",
+      "startup-animation.js",
       "voice-ipc.js",
       "assistant-ipc.js",
       "timer-ipc.js",

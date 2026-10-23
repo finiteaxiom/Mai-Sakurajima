@@ -175,6 +175,7 @@ const {
   publicAvatarState
 } = require('./avatar-catalog');
 const { createWindowManager } = require('./window-manager');
+const { showStartupAnimation } = require('./startup-animation');
 const { registerVoiceIpc } = require('./voice-ipc');
 const { registerAssistantIpc } = require('./assistant-ipc');
 const { registerTimerIpc } = require('./timer-ipc');
@@ -6373,7 +6374,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => showPet('hello'));
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     smokeDiagnostics?.checkpoint('app_ready');
     app.setAppUserModelId('com.mai.sakurajima.desktop');
     Menu.setApplicationMenu(null);
@@ -6453,6 +6454,10 @@ if (!gotLock) {
       runChatCloseSmoke(process.env.MAI_CLOSE_CHAT_SMOKE_OUTPUT);
       return;
     }
+    if (!['off', 'reduced'].includes(settings.appearance?.motion)) {
+      await showStartupAnimation({ BrowserWindow, rootDirectory: __dirname });
+    }
+    if (quitting) return;
     createWindow();
     createTray();
     scheduleProactiveGreeting(true);
