@@ -1,5 +1,7 @@
 'use strict';
 
+const { runtimeDiagnostics } = require('./runtime-diagnostics');
+
 class ModelGateway {
   constructor(options = {}) {
     if (!options.registry || typeof options.registry.require !== 'function') {
@@ -17,12 +19,12 @@ class ModelGateway {
 
   generate(options = {}) {
     const { tools: _tools, tool_choice: _toolChoice, toolChoice: _toolChoiceAlias, ...request } = options;
-    return this.provider(options).complete({
+    return runtimeDiagnostics.span('model', 'generate', () => this.provider(options).complete({
       ...request,
       stream: false,
       onDelta: null,
       allowEmpty: true
-    });
+    }));
   }
 
   stream(options = {}) {
@@ -30,11 +32,11 @@ class ModelGateway {
       throw new TypeError('ModelGateway.stream requires onDelta().');
     }
     const { tools: _tools, tool_choice: _toolChoice, toolChoice: _toolChoiceAlias, ...request } = options;
-    return this.provider(options).complete({
+    return runtimeDiagnostics.span('model', 'stream', () => this.provider(options).complete({
       ...request,
       stream: true,
       allowEmpty: true
-    });
+    }));
   }
 
   providers() {

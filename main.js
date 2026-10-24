@@ -2,7 +2,7 @@ const {
   app,
   BrowserWindow,
   dialog,
-  ipcMain,
+  ipcMain: rawIpcMain,
   Menu,
   nativeImage,
   safeStorage,
@@ -14,6 +14,9 @@ const {
   createSmokeDiagnostics,
   rendererSmokeMode
 } = require('./smoke-diagnostics');
+const { runtimeDiagnostics, instrumentIpc } = require('./runtime-diagnostics');
+const { registerDiagnosticsIpc } = require('./diagnostics-ipc');
+const ipcMain = instrumentIpc(rawIpcMain);
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -230,6 +233,22 @@ if (rendererSmoke) {
 }
 
 const storage = initializeStorage(app);
+runtimeDiagnostics.initialize({ directory: path.join(storage.userDataDirectory, 'logs', 'runtime') });
+runtimeDiagnostics.record('app', 'startup', 'started');
+process.on('uncaughtExceptionMonitor', (error) => runtimeDiagnostics.record('app', 'uncaught-exception', 'failed', { error }));
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('render-process-gone', () => runtimeDiagnostics.record('renderer', 'process-gone', 'failed'));
+  contents.on('unresponsive', () => runtimeDiagnostics.record('renderer', 'unresponsive', 'failed'));
+});
+// Preserve existing console output; the persistent copy deliberately excludes all text and payloads.
+for (const level of ['warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    runtimeDiagnostics.record('app', `console-${level}`, 'failed', { error: args.find(value => value instanceof Error) });
+    original(...args);
+  };
+}
+
 if (process.env.MAI_EXPECTED_USER_DATA_DIR) {
   const expectedUserData = path.resolve(process.env.MAI_EXPECTED_USER_DATA_DIR);
   if (path.resolve(storage.userDataDirectory) !== expectedUserData) {
@@ -5272,6 +5291,7 @@ function ensureDailyAutomaticBackup() {
   return automaticBackupService.ensureDailyAutomaticBackup();
 }
 function registerIpc() {
+  registerDiagnosticsIpc({ ipcMain, app, shell, dialog, diagnostics: runtimeDiagnostics, rendererDirectory: path.join(__dirname, 'renderer') });
   chatRequestService = new ChatRequestService({
     modelGateway,
     sanitizeMessages,
@@ -6426,6 +6446,7 @@ if (!gotLock) {
     }
     applyLoginSetting(settings.openAtLogin);
     registerIpc();
+    runtimeDiagnostics.record('app', 'startup', 'completed');
     smokeDiagnostics?.checkpoint('services_initialized');
     if (process.env.MAI_STORAGE_PERF_SMOKE === '1') {
       runStoragePerformanceSmoke(process.env.MAI_STORAGE_PERF_OUTPUT).catch((error) => {
@@ -6494,6 +6515,13 @@ if (!gotLock) {
   });
 
   app.on('activate', () => showPet('hello'));
+  let diagnosticsFlushed = false;
+  app.on('will-quit', event => {
+    if (diagnosticsFlushed) return;
+    event.preventDefault();
+    runtimeDiagnostics.record('app', 'shutdown', 'completed');
+    Promise.race([runtimeDiagnostics.flush(), new Promise(resolve => setTimeout(resolve, 1500))]).finally(() => { diagnosticsFlushed = true; app.exit(0); });
+  });
   app.on('before-quit', () => {
     quitting = true;
     chatRequestLifecycle.cancelAll('app_quit');

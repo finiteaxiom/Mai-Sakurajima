@@ -135,3 +135,5 @@ Provider 负责稳定错误码、超时、取消和流式协议；Chat 将错误
 `npm run diagnostics:session-message-shape-audit` 在二分确认任意历史回合都可能复现后使用。它只选取第一条历史 user/assistant 回合，并比较原始 user、原始 assistant、原始成对消息、将 assistant 改为 user，以及固定的安全 assistant JSON/文本；输出不含原始内容，用于区分历史 role、内容形状与特定文本造成的影响。
 
 对 DeepSeek structured Chat，历史中的 assistant 可见回复会在请求边界被包装为明确标注的历史上下文数据；原文不会删除或改写，持久化会话中的 role 和内容也不会改变。该边界只影响发送给 Provider 的临时 message 序列，用于避免 Provider 在 JSON mode 下对特定原生 `user → assistant` 历史组合返回空白内容。
+
+正式版另有独立的运行诊断：设置页可查看近期操作记录、打开日志目录及主动导出脱敏 JSON，详见 [运行诊断](RUNTIME-DIAGNOSTICS.md)。它记录 IPC、模型与持久化边界的安全元数据，使用随机 traceId 关联同一异步链，不改变上述开发 LLM 诊断、Prompt、业务错误处理或 Chat/Action 状态所有权。

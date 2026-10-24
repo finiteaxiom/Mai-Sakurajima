@@ -112,3 +112,10 @@ module.exports = {
   writeFileAtomic,
   writeJsonAtomic
 };
+
+const { runtimeDiagnostics } = require('./runtime-diagnostics');
+module.exports.ensureFileBackup = (...args) => runtimeDiagnostics.span('persistence', 'ensure-file-backup', () => ensureFileBackup(...args));
+module.exports.preserveFileAtomically = (...args) => runtimeDiagnostics.span('persistence', 'preserve-file-atomically', () => preserveFileAtomically(...args));
+module.exports.readJsonFile = (...args) => runtimeDiagnostics.span('persistence', 'read-json-file', () => readJsonFile(...args));
+module.exports.writeFileAtomic = (...args) => runtimeDiagnostics.span('persistence', 'write-file-atomic', () => writeFileAtomic(...args));
+module.exports.writeJsonAtomic = (...args) => runtimeDiagnostics.span('persistence', 'write-json-atomic', () => writeJsonAtomic(...args));

@@ -10,11 +10,13 @@ function loadPreloadContract() {
   const sends = [];
   const listeners = new Map();
   let exposed = null;
+  let diagnostics = null;
   const electronMock = {
     contextBridge: {
       exposeInMainWorld(name, api) {
-        assert.equal(name, 'maiPet');
-        exposed = api;
+        assert.ok(['maiPet', 'maiDiagnostics'].includes(name));
+        if (name === 'maiPet') exposed = api;
+        else diagnostics = api;
       }
     },
     ipcRenderer: {
@@ -45,7 +47,7 @@ function loadPreloadContract() {
   } finally {
     Module._load = originalLoad;
   }
-  return { api: exposed, invokes, sends, listeners };
+  return { api: exposed, diagnostics, invokes, sends, listeners };
 }
 
 test('preload exposes separate companion Chat and narrow Action contracts', async () => {
@@ -109,4 +111,11 @@ test('preload event subscriptions forward voice and Agent payloads and can detac
   assert.deepEqual(received.at(-1), ['agent', { type: 'TaskStarted', taskId: 'task-1' }]);
   detachAgent();
   assert.equal(listeners.has('agent:event'), false);
+});
+
+test('diagnostic preload exposes fixed operations without filesystem or export path input', async () => {
+  const { diagnostics, invokes, sends } = loadPreloadContract();
+  await diagnostics.snapshot('ignored'); await diagnostics.openFolder('ignored'); await diagnostics.export('ignored'); diagnostics.reportError('script-error');
+  assert.deepEqual(invokes, ['snapshot','open-folder','export'].map(name => ({channel:`diagnostics:${name}`,args:[]})));
+  assert.deepEqual(sends, [{channel:'diagnostics:renderer-error',args:['script-error']}]);
 });

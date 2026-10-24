@@ -198,3 +198,10 @@ contextBridge.exposeInMainWorld('maiPet', {
     ipcRenderer.on('assistant:select-tab', (_event, tab) => callback(tab));
   }
 });
+
+contextBridge.exposeInMainWorld('maiDiagnostics', {
+  snapshot: () => ipcRenderer.invoke('diagnostics:snapshot'),
+  openFolder: () => ipcRenderer.invoke('diagnostics:open-folder'),
+  export: () => ipcRenderer.invoke('diagnostics:export'),
+  reportError: kind => ipcRenderer.send('diagnostics:renderer-error', kind)
+});

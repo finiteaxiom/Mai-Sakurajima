@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="workspace-layout.css">
     <link rel="stylesheet" href="wallpaper.css">
     <link rel="stylesheet" href="mai-design.css">
+    <link rel="stylesheet" href="diagnostics.css">
   </head>
   <body class="ui-chat">
     <div id="wallpaper-layer" class="wallpaper-layer" aria-hidden="true"></div>
@@ -506,6 +507,17 @@
           <code>https://api.deepseek.com/chat/completions</code>
         </div>
 
+        <section class="appearance-settings" aria-labelledby="diagnostics-title">
+          <strong id="diagnostics-title">运行诊断</strong>
+          <p>本地保存运行状态、耗时和错误码，不记录聊天正文、文件内容、音频或密钥。导出最近最多 1000 条记录，供排查问题。</p>
+          <div class="settings-actions">
+            <button id="diagnostics-refresh" class="button button--secondary" type="button">查看诊断</button>
+            <button id="diagnostics-folder" class="button button--secondary" type="button">打开日志目录</button>
+            <button id="diagnostics-export" class="button button--secondary" type="button">导出脱敏诊断</button>
+          </div>
+          <pre id="diagnostics-output" role="status">点击“查看诊断”读取近期运行记录。</pre>
+        </section>
+
         <div id="settings-status" class="settings-status" role="status"></div>
 
         <div class="settings-actions">
@@ -895,5 +907,6 @@
     <script src="work-renderer-bindings.js"></script>
     <script src="ui-presentation.js"></script>
     <script src="chat.js"></script>
+    <script src="diagnostics.js"></script>
   </body>
 </html>

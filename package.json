@@ -15,6 +15,7 @@
     "diagnostics:session-message-bisect": "node scripts/deepseek-real-mai-incremental-smoke.js --message-bisect",
     "diagnostics:session-message-shape-audit": "node scripts/deepseek-real-mai-incremental-smoke.js --message-shape-audit",
     "benchmark:storage": "node test/storage-performance-benchmark-runner.js",
+    "test:diagnostics": "node --test test/runtime-diagnostics.test.js && node test/runtime-diagnostics-smoke.js",
     "test": "node --test test/*.test.js && node test/migration-smoke-runner.js && node test/restore-protection-smoke-runner.js && node test/p0-chat-flow-smoke-runner.js"
   },
   "build": {
@@ -24,6 +25,8 @@
     "npmRebuild": false,
     "files": [
       "main.js",
+      "runtime-diagnostics.js",
+      "diagnostics-ipc.js",
       "window-manager.js",
       "startup-animation.js",
       "voice-ipc.js",

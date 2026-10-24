@@ -272,3 +272,7 @@ module.exports = {
   commitFileSetAtomically,
   recoverInterruptedFileSetTransaction
 };
+
+const { runtimeDiagnostics } = require('./runtime-diagnostics');
+module.exports.commitFileSetAtomically = (...args) => runtimeDiagnostics.span('persistence', 'commit-file-set-atomically', () => commitFileSetAtomically(...args));
+module.exports.recoverInterruptedFileSetTransaction = (...args) => runtimeDiagnostics.span('persistence', 'recover-interrupted-file-set-transaction', () => recoverInterruptedFileSetTransaction(...args));
