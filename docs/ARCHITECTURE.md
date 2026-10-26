@@ -45,6 +45,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 |---|---|---|
 | 窗口与托盘 | `window-manager.js` 创建并管理 pet、chat、timer、assistant 窗口、托盘与关闭行为 | Chat、Memory、Persona、Provider 规则 |
 | 桌宠显隐 | `pet-visibility.js` 管理悬停/显隐定时器 | 业务状态与 Prompt |
+| 桌宠衣橱 | `pet-wardrobe.js` 校验固定服装 ID 并调用 Main 保存设置；`renderer/pet-catalog.js` 与 `pet-sprites.js` 提供静态动作目录和共同播放器；详见 [PET-WARDROBE.md](PET-WARDROBE.md) | Chat、Memory、Voice 生命周期、动态脚本或外部资源加载 |
 | 领域 IPC | `voice-ipc.js`、`assistant-ipc.js`、`timer-ipc.js`、`workspace-capability-ipc.js` 只注册各自 channel，并通过窄回调调用 Main 编排 | Prompt、持久化策略、跨域状态规则 |
 | Chat Workspace 只读授权 | `workspace-capability-gateway.js` 持有会话绑定、可过期/撤销的 root grant 与单次 context；只允许 `list` / `read`，并委托 `WorkspaceFileService` | Work Project、Agent、写入、递归扫描、持久化文件正文 |
 | Renderer Chat turn 投影 | `renderer/chat-turn-coordinator.js` 管理当前视图 turn token、session/view generation、乐观消息与 pending 清理、取消确认和 Voice 流订阅释放；同 session 完整 hydration 也会废弃旧投影 | Main 请求 AbortController、Provider、持久化与结构化状态候选 |

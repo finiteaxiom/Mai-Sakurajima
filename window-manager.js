@@ -1,3 +1,5 @@
+const petCatalog = require('./renderer/pet-catalog');
+
 function createWindowManager({
   app,
   BrowserWindow,
@@ -37,6 +39,7 @@ function createWindowManager({
   requestQuit
 }) {
   const assetPath = (...parts) => path.join(rootDirectory, ...parts);
+  let wardrobeWindow = null;
   const createWebPreferences = () => ({
     preload: assetPath('preload.js'),
     contextIsolation: true,
@@ -204,6 +207,22 @@ function createWindowManager({
     assistantWindow.on('closed', () => setAssistantWindow(null));
   }
 
+  function openWardrobe() {
+    if (wardrobeWindow && !wardrobeWindow.isDestroyed()) {
+      if (wardrobeWindow.isMinimized()) wardrobeWindow.restore();
+      wardrobeWindow.show(); wardrobeWindow.focus(); return;
+    }
+    wardrobeWindow = new BrowserWindow({
+      width: 760, height: 780, minWidth: 600, minHeight: 640,
+      show: false, autoHideMenuBar: true, backgroundColor: '#FAF9F7',
+      title: 'Mai · 衣橱与动作', icon: assetPath('assets', 'mai-icon.png'),
+      webPreferences: createWebPreferences()
+    });
+    wardrobeWindow.loadFile(assetPath('renderer', 'wardrobe.html'));
+    wardrobeWindow.once('ready-to-show', () => wardrobeWindow?.show());
+    wardrobeWindow.on('closed', () => { wardrobeWindow = null; });
+  }
+
   function persistPosition() {
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -230,6 +249,7 @@ function createWindowManager({
   }
 
   function actionMenuItems() {
+    const outfit = petCatalog.get(petCatalog.normalize(getSettings().petWardrobe?.outfitId));
     return [
       { label: '摸摸头', click: () => sendAction('pet') },
       { type: 'separator' },
@@ -237,7 +257,10 @@ function createWindowManager({
       { label: '让她睡一会儿', click: () => sendAction('sleep') },
       { label: '给她吃零食', click: () => sendAction('snack') },
       { label: '一起学习', click: () => sendAction('study') },
-      { label: '一起认真工作', click: () => sendAction('work') }
+      { label: '一起认真工作', click: () => sendAction('work') },
+      { type: 'separator' },
+      { label: outfit.primary, click: () => sendAction('outfitPrimary') },
+      { label: outfit.secondary, click: () => sendAction('outfitSecondary') }
     ];
   }
 
@@ -254,6 +277,7 @@ function createWindowManager({
       { label: '召唤麻衣', click: () => showPet('hello') },
       { type: 'separator' },
       { label: '互动', submenu: actionMenuItems() },
+      { label: '衣橱与动作…', click: openWardrobe },
       {
         label: '状态与陪伴',
         submenu: [
@@ -350,6 +374,8 @@ function createWindowManager({
     openChat,
     openTimerWindow,
     openAssistantWindow,
+    openWardrobe,
+    getWardrobeWindow: () => wardrobeWindow,
     persistPosition,
     showPet,
     buildMenu,

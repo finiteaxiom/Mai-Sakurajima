@@ -36,6 +36,7 @@
       "workspace-capability-gateway.js",
       "workspace-capability-ipc.js",
       "pet-visibility.js",
+      "pet-wardrobe.js",
       "automatic-backup-service.js",
       "json-persistence.js",
       "file-set-transaction.js",

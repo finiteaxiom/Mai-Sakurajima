@@ -120,7 +120,7 @@ test('pet context menu keeps common actions at the top level and groups secondar
   const menu = manager.buildMenu();
   assert.deepEqual(
     menu.items.filter((item) => item.label).map((item) => item.label),
-    ['和麻衣聊天…', '召唤麻衣', '互动', '状态与陪伴', '设置与管理', '暂时隐藏', '退出 Mai Sakurajima']
+    ['和麻衣聊天…', '召唤麻衣', '互动', '衣橱与动作…', '状态与陪伴', '设置与管理', '暂时隐藏', '退出 Mai Sakurajima']
   );
   const interaction = menu.items.find((item) => item.label === '互动');
   const companion = menu.items.find((item) => item.label === '状态与陪伴');
@@ -128,4 +128,15 @@ test('pet context menu keeps common actions at the top level and groups secondar
   assert.equal(interaction.submenu[0].label, '摸摸头');
   assert.ok(companion.submenu.some((item) => item.label === '主动聊天' && item.type === 'checkbox'));
   assert.ok(management.submenu.some((item) => item.label === '模型与聊天设置…'));
+});
+
+test('wardrobe is a reusable independent window; closing it does not stop chat voice', () => {
+  const { manager, stopped } = createHarness();
+  manager.openChat(); manager.openWardrobe();
+  const first = manager.getWardrobeWindow();
+  manager.openWardrobe(); assert.equal(manager.getWardrobeWindow(), first);
+  assert.equal(first.options.webPreferences.sandbox, true);
+  first.destroyed = true; first.events.get('closed')();
+  assert.equal(manager.getWardrobeWindow(), null); assert.equal(stopped(), 0);
+  manager.openWardrobe(); assert.notEqual(manager.getWardrobeWindow(), first);
 });

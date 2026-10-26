@@ -16,6 +16,7 @@ const {
 } = require('./smoke-diagnostics');
 const { runtimeDiagnostics, instrumentIpc } = require('./runtime-diagnostics');
 const { registerDiagnosticsIpc } = require('./diagnostics-ipc');
+const { registerPetWardrobeIpc } = require('./pet-wardrobe');
 const ipcMain = instrumentIpc(rawIpcMain);
 const fs = require('fs');
 const path = require('path');
@@ -5291,6 +5292,13 @@ function ensureDailyAutomaticBackup() {
   return automaticBackupService.ensureDailyAutomaticBackup();
 }
 function registerIpc() {
+  registerPetWardrobeIpc({
+    ipcMain, rootDirectory: __dirname, nativeImage,
+    getSettings: () => settings, saveSettings,
+    openWardrobe: () => windowManager.openWardrobe(),
+    refreshMenu: () => windowManager.refreshTrayMenu(),
+    getWindows: () => [mainWindow, chatWindow, windowManager.getWardrobeWindow()]
+  });
   registerDiagnosticsIpc({ ipcMain, app, shell, dialog, diagnostics: runtimeDiagnostics, rendererDirectory: path.join(__dirname, 'renderer') });
   chatRequestService = new ChatRequestService({
     modelGateway,

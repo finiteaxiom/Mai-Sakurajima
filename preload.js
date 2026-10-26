@@ -1,5 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('maiWardrobe', {
+  open: () => ipcRenderer.invoke('wardrobe:open'),
+  get: () => ipcRenderer.invoke('wardrobe:get'),
+  set: (id) => ipcRenderer.invoke('wardrobe:set', id),
+  onChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('wardrobe:changed', listener);
+    return () => ipcRenderer.removeListener('wardrobe:changed', listener);
+  }
+});
+
 contextBridge.exposeInMainWorld('maiPet', {
   getSettings: () => ipcRenderer.invoke('pet:get-settings'),
   getContext: () => ipcRenderer.invoke('pet:get-context'),

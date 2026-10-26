@@ -11,12 +11,14 @@ function loadPreloadContract() {
   const listeners = new Map();
   let exposed = null;
   let diagnostics = null;
+  let wardrobe = null;
   const electronMock = {
     contextBridge: {
       exposeInMainWorld(name, api) {
-        assert.ok(['maiPet', 'maiDiagnostics'].includes(name));
+        assert.ok(['maiPet', 'maiDiagnostics', 'maiWardrobe'].includes(name));
         if (name === 'maiPet') exposed = api;
-        else diagnostics = api;
+        else if (name === 'maiDiagnostics') diagnostics = api;
+        else wardrobe = api;
       }
     },
     ipcRenderer: {
@@ -47,7 +49,7 @@ function loadPreloadContract() {
   } finally {
     Module._load = originalLoad;
   }
-  return { api: exposed, diagnostics, invokes, sends, listeners };
+  return { api: exposed, diagnostics, wardrobe, invokes, sends, listeners };
 }
 
 test('preload exposes separate companion Chat and narrow Action contracts', async () => {
@@ -118,4 +120,18 @@ test('diagnostic preload exposes fixed operations without filesystem or export p
   await diagnostics.snapshot('ignored'); await diagnostics.openFolder('ignored'); await diagnostics.export('ignored'); diagnostics.reportError('script-error');
   assert.deepEqual(invokes, ['snapshot','open-folder','export'].map(name => ({channel:`diagnostics:${name}`,args:[]})));
   assert.deepEqual(sends, [{channel:'diagnostics:renderer-error',args:['script-error']}]);
+});
+
+test('wardrobe preload exposes only fixed operations and detachable notifications', async () => {
+  const { wardrobe, invokes, listeners } = loadPreloadContract();
+  await wardrobe.open(); await wardrobe.get(); await wardrobe.set('school');
+  assert.deepEqual(invokes, [
+    { channel: 'wardrobe:open', args: [] }, { channel: 'wardrobe:get', args: [] },
+    { channel: 'wardrobe:set', args: ['school'] }
+  ]);
+  let received;
+  const detach = wardrobe.onChanged(state => { received = state; });
+  listeners.get('wardrobe:changed')({}, { outfitId: 'school' });
+  assert.deepEqual(received, { outfitId: 'school' }); detach();
+  assert.equal(listeners.has('wardrobe:changed'), false);
 });

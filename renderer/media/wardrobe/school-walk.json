@@ -1,0 +1,39 @@
+{
+  "imageWidth": 1322,
+  "imageHeight": 1190,
+  "standingHeight": 524,
+  "frames": [
+    {
+      "x": 240,
+      "y": 55,
+      "width": 319,
+      "height": 524,
+      "anchorX": 414.0,
+      "baseline": 579
+    },
+    {
+      "x": 763,
+      "y": 55,
+      "width": 292,
+      "height": 524,
+      "anchorX": 937.0,
+      "baseline": 579
+    },
+    {
+      "x": 240,
+      "y": 622,
+      "width": 320,
+      "height": 523,
+      "anchorX": 414.0,
+      "baseline": 1145
+    },
+    {
+      "x": 764,
+      "y": 622,
+      "width": 299,
+      "height": 524,
+      "anchorX": 937.0,
+      "baseline": 1146
+    }
+  ]
+}

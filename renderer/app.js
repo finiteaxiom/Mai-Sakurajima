@@ -32,6 +32,10 @@ const desktopApi = window.maiPet ?? {
 };
 
 const STATES = {
+  lifted: { row: 4, frames: [1, 2], interval: 200, label: '轻轻提起', prop: '' },
+  land: { row: 4, frames: [3, 4], interval: 200, label: '站稳啦', prop: '' },
+  outfitPrimary: { row: 7, frames: [0, 1, 2, 3, 4, 5], interval: 250, label: '日常陪伴', prop: '' },
+  outfitSecondary: { row: 6, frames: [0, 1, 2, 3, 4, 5], interval: 330, label: '放松片刻', prop: '' },
   idle: {
     row: 0,
     frames: [0, 1, 2, 3, 4, 5],
@@ -218,6 +222,37 @@ let gaze = null;
 let pointerContextPending = false;
 let drag = null;
 let lastInteractionAt = Date.now();
+const outfitPlayer = window.MaiPetSprites.createPlayer(context);
+let outfitId = 'original';
+let pendingOutfit = null;
+let outfitRequest = 0;
+let userReducedOutfitMotion = false;
+let reducedOutfitMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', event => { reducedOutfitMotion = event.matches; });
+
+async function changeOutfit(id) {
+  const request = ++outfitRequest;
+  const normalized = window.MaiPetCatalog.normalize(id);
+  pendingOutfit = normalized;
+  try {
+    const asset = await window.MaiPetSprites.load(normalized);
+    if (request !== outfitRequest) return;
+    if (drag) { pendingOutfit = normalized; return; }
+    pendingOutfit = null;
+    outfitId = normalized;
+    outfitPlayer.setAsset(asset);
+    outfitPlayer.setAction(currentState, performance.now(), true);
+    updateProp(STATES[currentState]);
+    const outfit = window.MaiPetCatalog.get(outfitId);
+    if (currentState === 'outfitPrimary') stateLabel.textContent = outfit.primary;
+    if (currentState === 'outfitSecondary') stateLabel.textContent = outfit.secondary;
+    if (!animationStarted) { animationStarted = true; requestAnimationFrame(drawFrame); }
+  } catch {
+    if (request !== outfitRequest) return;
+    pendingOutfit = null;
+    showSpeech('这套衣服暂时没能加载，先保持现在的装扮。');
+  }
+}
 
 function choose(items) {
   return items[Math.floor(Math.random() * items.length)];
@@ -245,6 +280,7 @@ function weightedAction() {
 
 function updateProp(config) {
   prop.className = 'prop';
+  if (outfitId !== 'original') { prop.textContent = ''; return; }
   prop.textContent = config.prop || '';
   if (config.propClass) {
     prop.classList.add(`prop--${config.propClass}`);
@@ -270,9 +306,11 @@ function setState(name, options = {}) {
   frameIndex = 0;
   lastFrameAt = 0;
   gaze = null;
+  outfitPlayer.setAction(name, performance.now(), Boolean(drag) || name === 'land' || name === 'love');
 
   const config = STATES[name];
-  stateLabel.textContent = config.label;
+  const outfit = window.MaiPetCatalog.get(outfitId);
+  stateLabel.textContent = name === 'outfitPrimary' ? outfit.primary : name === 'outfitSecondary' ? outfit.secondary : config.label;
   updateProp(config);
 
   if (options.dialogue) {
@@ -299,12 +337,19 @@ function scheduleAutonomy(delay = randomBetween(9000, 17000)) {
       scheduleAutonomy(5000);
       return;
     }
-    const action = weightedAction();
+    const action = outfitId === 'original' ? weightedAction() : {
+      name: choose(['outfitPrimary', 'outfitSecondary', 'wave', 'sleep']), min: 6500, max: 10000
+    };
     setState(action.name, { duration: randomBetween(action.min, action.max) });
   }, delay);
 }
 
 function drawFrame(timestamp) {
+  if (outfitId !== 'original') {
+    outfitPlayer.draw(timestamp, reducedOutfitMotion || userReducedOutfitMotion);
+    requestAnimationFrame(drawFrame);
+    return;
+  }
   if (!spriteSheet.complete || spriteSheet.naturalWidth === 0) {
     requestAnimationFrame(drawFrame);
     return;
@@ -434,7 +479,7 @@ stage.addEventListener('pointermove', (event) => {
   }
 
   if (drag.moved) {
-    const direction = dx >= drag.lastDx ? 'runRight' : 'runLeft';
+    const direction = outfitId === 'original' ? (dx >= drag.lastDx ? 'runRight' : 'runLeft') : 'lifted';
     if (currentState !== direction) {
       setState(direction);
     }
@@ -475,12 +520,13 @@ function finishPointer(event) {
 
   if (finishedDrag.moved) {
     desktopApi.endDrag();
-    setState('jump', { duration: 1000 });
+    setState(outfitId === 'original' ? 'jump' : 'land', { duration: 1000 });
   } else if (isHeadPoint(finishedDrag.startPoint)) {
     petHead();
   } else {
     pokeBody();
   }
+  if (pendingOutfit) changeOutfit(pendingOutfit);
 }
 
 stage.addEventListener('pointerup', finishPointer);
@@ -557,11 +603,18 @@ spriteSheet.addEventListener('error', () => {
 spriteSheet.src = '../assets/spritesheet-original.png';
 
 desktopApi.getSettings().then((settings) => {
+  userReducedOutfitMotion = ['off', 'reduced'].includes(settings.appearance?.motion);
   if (settings.firstLaunch) {
     showSpeech('以后我会经常来找你。右键可以设置番茄钟，还藏着一个“不可见”的秘密。', 8200);
   }
   scheduleAutonomy(settings.firstLaunch ? 13000 : 8000);
 });
+
+if (window.maiWardrobe) {
+  let receivedOutfitEvent = false;
+  window.maiWardrobe.onChanged(state => { receivedOutfitEvent = true; changeOutfit(state.outfitId); });
+  window.maiWardrobe.get().then(state => { if (!receivedOutfitEvent) changeOutfit(state.outfitId); }).catch(() => {});
+}
 
 desktopApi.onAction(runAction);
 desktopApi.onInvisibleMode((enabled) => {

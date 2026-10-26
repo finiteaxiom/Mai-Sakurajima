@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <title>Mai · 衣橱与动作</title>
+  <link rel="stylesheet" href="mai-design.css">
+  <link rel="stylesheet" href="wardrobe.css">
+</head>
+<body>
+  <main>
+    <header><div><span class="eyebrow">MAI'S WARDROBE</span><h1>今天，穿哪一套？</h1></div><button id="close" aria-label="关闭衣橱">关闭</button></header>
+    <section class="preview" aria-label="服装动态预览">
+      <canvas id="preview" width="192" height="208" aria-label="麻衣动作预览"></canvas>
+      <div class="preview-description"><h2 id="outfit-name">原版装扮</h2><p id="outfit-description"></p><span id="current-outfit">正在读取装扮…</span></div>
+    </section>
+    <div id="outfits" class="outfits" role="group" aria-label="选择服装"></div>
+    <section class="actions"><label for="action">动作预览</label><select id="action"></select><button id="replay">重新播放</button><button id="pause" aria-pressed="false">暂停</button></section>
+    <footer><p id="status" role="status" aria-live="polite">选中服装后，点击“换上这套”应用。</p><button id="apply" class="primary" disabled>换上这套</button></footer>
+  </main>
+  <script src="appearance.js"></script>
+  <script src="pet-catalog.js"></script>
+  <script src="pet-sprites.js"></script>
+  <script src="wardrobe.js"></script>
+</body>
+</html>

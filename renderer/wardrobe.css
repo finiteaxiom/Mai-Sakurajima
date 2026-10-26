@@ -1,0 +1,28 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--mai-text-primary); background: var(--mai-bg-secondary); }
+main { max-width: 880px; margin: auto; padding: 28px; }
+header, footer, .actions { display: flex; align-items: center; gap: 14px; }
+header, footer { justify-content: space-between; }
+h1 { font-size: 25px; margin: 4px 0 18px; font-weight: 600; }
+h2 { font-size: 22px; margin: 0; }
+p { color: var(--mai-text-secondary); }
+.eyebrow { color: var(--mai-accent); font-size: 11px; letter-spacing: 2px; }
+button, select { font: inherit; color: inherit; border: 1px solid var(--mai-border); border-radius: 12px; background: var(--mai-surface); padding: 9px 16px; cursor: pointer; }
+button:hover { background: var(--mai-surface-hover); }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--mai-accent); outline-offset: 3px; }
+button:disabled { opacity: .55; cursor: default; }
+.preview { display: flex; justify-content: center; align-items: center; gap: 40px; padding: 14px 22px; min-height: 300px; border: 1px solid var(--mai-border); border-radius: 24px; background: radial-gradient(ellipse at 30% 70%, var(--mai-surface-active), var(--mai-surface) 70%); }
+#preview { width: 240px; height: 260px; image-rendering: pixelated; }
+.preview-description { max-width: 220px; }
+#current-outfit { color: var(--mai-accent); font-size: 12px; }
+.outfits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
+.outfit { padding: 8px 4px; display: flex; flex-direction: column; align-items: center; border: 2px solid var(--mai-border); }
+.outfit[aria-pressed="true"] { border-color: var(--mai-accent); background: var(--mai-surface-active); }
+.outfit canvas { width: 96px; height: 104px; image-rendering: pixelated; }
+.outfit small { font-size: 11px; min-height: 18px; color: var(--mai-accent); }
+.actions { flex-wrap: wrap; margin: 18px 0; }
+footer { border-top: 1px solid var(--mai-border); padding-top: 16px; }
+#status { flex: 1; margin: 0; font-size: 12px; }
+.primary { background: var(--mai-accent); color: var(--mai-on-accent); white-space: nowrap; }
+.primary:hover { background: var(--mai-accent-hover); }
+@media (max-width: 640px) { main { padding: 18px; } .preview { gap: 12px; } #preview { width: 192px; height: 208px; } .outfits { gap: 6px; } .outfit { font-size: 12px; } }
