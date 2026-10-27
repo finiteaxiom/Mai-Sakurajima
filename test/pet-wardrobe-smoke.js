@@ -42,7 +42,7 @@ if (!process.versions.electron) {
       saveSettings: () => { if (failSave) throw new Error('fixture disk failure'); fs.writeFileSync(savedFile, JSON.stringify(settings)); },
       openWardrobe: manager.openWardrobe, getWindows: () => [pet, chat, manager.getWardrobeWindow()] });
     ipcMain.handle('pet:get-settings', () => settings);
-    ipcMain.handle('pet:get-context', () => ({ cursor: { x: 0, y: 0 }, bounds: pet?.getBounds() || { x: 40, y: 40, width: 310, height: 390 } }));
+    ipcMain.handle('pet:get-context', () => ({ cursor: { x: 0, y: 0 }, bounds: pet && !pet.isDestroyed() ? pet.getBounds() : { x: 40, y: 40, width: 310, height: 390 } }));
     const run = (win, code) => win.webContents.executeJavaScript(code);
     const waitFor = async (win, expression) => { for (let i = 0; i < 160; i++) { if (await run(win, expression)) return; await new Promise(resolve => setTimeout(resolve, 50)); } throw new Error('UI did not settle: ' + expression); };
     manager.createWindow();
