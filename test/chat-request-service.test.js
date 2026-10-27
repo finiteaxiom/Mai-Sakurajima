@@ -258,3 +258,23 @@ test('Chat request service rejects empty sanitized input and missing dependencie
   await assert.rejects(service.request([]), /请输入想和麻衣说的话/);
   assert.throws(() => new ChatRequestService(), /ModelGateway/);
 });
+
+test('plain retry returning a truncated envelope exposes only reply and no state candidates', async () => {
+  const { service, calls } = createHarness({ responses: [
+    { rawContent: '', finishReason: 'stop' },
+    { rawContent: '{"reply":"我在。","memories":["private"],"mind":', finishReason: 'length' }
+  ] });
+  const result = await service.request([{role:'user',content:'你好'}], {onDelta() { throw new Error('Retry must buffer raw output'); }});
+  assert.deepEqual(calls.filter(entry => Array.isArray(entry) && ['generate', 'stream'].includes(entry[0])).map(entry => entry[0]), ['stream', 'generate']);
+  assert.equal(result.content,'我在。');
+  assert.deepEqual(result.memories,[]);
+  assert.deepEqual(result.mind,{});
+});
+
+test('plain retry with an unfinished visible string fails instead of exposing JSON', async () => {
+  const { service } = createHarness({ responses: [
+    { rawContent: '', finishReason: 'stop' },
+    { rawContent: '{"reply":"未结束', finishReason: 'length' }
+  ] });
+  await assert.rejects(service.request([{role:'user',content:'你好'}]),{code:'INVALID_STRUCTURED_REPLY'});
+});

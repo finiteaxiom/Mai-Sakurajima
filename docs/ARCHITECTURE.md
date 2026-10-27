@@ -4,6 +4,8 @@
 
 ## 产品与进程边界
 
+Chat 的 `structured-reply.js` 统一识别回复封装：截断 JSON 只恢复首个完整的顶层正文字符串，放弃该回复的全部结构化状态候选；正文不完整时返回可见错误，不回显原始 JSON。纯文本重试先缓冲并检查封装，再返回正文。历史消息仅在 Chat 显示和模型上下文序列化时过滤封装，不改写磁盘历史；用户消息与 Work 消息不经过这一显示过滤。
+
 Mai 是本地优先的 Windows 桌面 AI 伴侣。Renderer（渲染进程）只负责界面和受限 IPC 调用；它没有 Node.js、数据库、API Key 或模型网络权限。所有数据、模型请求、文件导入与系统级窗口操作都在 Electron Main Process（主进程）中完成。
 
 Renderer 的统一视觉 token、外观偏好和页面层级见 [MAI-DESIGN-SYSTEM.md](MAI-DESIGN-SYSTEM.md)。这些只改变呈现层，不改变下面的 Runtime 或 IPC 边界。

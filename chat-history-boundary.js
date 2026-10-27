@@ -1,4 +1,5 @@
 'use strict';
+const { visibleHistoryText } = require('./structured-reply');
 
 // DeepSeek JSON mode can produce whitespace-only content for some otherwise
 // ordinary native user/assistant history pairs. Preserve every visible reply,
@@ -10,7 +11,7 @@ function serializeHistoricalAssistantReplies(messages) {
   if (!Array.isArray(messages)) return [];
   return messages.map((message) => {
     if (message?.role !== 'assistant') return message;
-    const content = String(message.content || '');
+    const content = visibleHistoryText(message.content);
     if (content.startsWith(HISTORICAL_ASSISTANT_CONTEXT_PREFIX)) return message;
     return {
       ...message,

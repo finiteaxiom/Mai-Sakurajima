@@ -53,6 +53,7 @@
       "chat-request-lifecycle.js",
       "chat-request-service.js",
       "chat-history-boundary.js",
+      "structured-reply.js",
       "llm-cache-diagnostics.js",
       "model-gateway.js",
       "model-provider-registry.js",

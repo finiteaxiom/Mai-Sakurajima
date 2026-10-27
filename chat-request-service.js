@@ -1,4 +1,5 @@
 'use strict';
+const { read: readStructuredReply } = require('./structured-reply');
 
 const REQUIRED_DEPENDENCIES = [
   'sanitizeMessages',
@@ -152,7 +153,9 @@ class ChatRequestService {
     const dependencies = this.options;
     const maxTokens = Number.isFinite(requestOptions.maxTokens) ? requestOptions.maxTokens : 700;
     const structured = requestOptions.structured !== false;
-    const onDelta = typeof requestOptions.onDelta === 'function' ? requestOptions.onDelta : null;
+    // A plain retry can still contain the structured envelope; validate it before display.
+    const onDelta = !(requestOptions.fallbackAttempt === true && !structured)
+      && typeof requestOptions.onDelta === 'function' ? requestOptions.onDelta : null;
     const responseInstruction = String(requestOptions.responseInstruction || '').slice(0, 600);
     const workspaceContext = workspaceContextText(requestOptions.workspaceContext);
     const requestedDiagnostic = requestOptions.diagnostic && typeof requestOptions.diagnostic === 'object'
@@ -344,11 +347,18 @@ class ChatRequestService {
 
     let reply;
     try {
+      // A plain-text retry may still return the previous JSON contract.
+      const fallbackReply = !structured && requestOptions.fallbackAttempt === true
+        ? readStructuredReply(rawContent) : null;
+      if (fallbackReply?.envelope && !fallbackReply.content) {
+        throw Object.assign(new Error('回复格式不完整，请重试。'), { code: 'INVALID_STRUCTURED_REPLY' });
+      }
+      const plainContent = fallbackReply?.envelope ? fallbackReply.content : rawContent;
       reply = structured
         ? dependencies.parseStructuredReply(rawContent)
         : {
-            content: rawContent,
-            ...dependencies.inferActionFromText(rawContent),
+            content: plainContent,
+            ...dependencies.inferActionFromText(plainContent),
             memories: [],
             episodes: [],
             topics: [],

@@ -3395,6 +3395,9 @@ function messageTimestamp(value = Date.now()) {
 }
 
 function addMessage(role, content, options = {}) {
+  if (role === 'assistant' && selectedRuntimeMode === 'chat' && window.MaiStructuredReply) {
+    content = window.MaiStructuredReply.visibleHistoryText(content);
+  }
   messagesElement.querySelector('.runtime-welcome')?.remove();
   const article = document.createElement('article');
   article.className = `message message--${role}${options.history ? "" : " message--new"}`;

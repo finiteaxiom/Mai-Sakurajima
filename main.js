@@ -17,6 +17,7 @@ const {
 const { runtimeDiagnostics, instrumentIpc } = require('./runtime-diagnostics');
 const { registerDiagnosticsIpc } = require('./diagnostics-ipc');
 const { registerPetWardrobeIpc } = require('./pet-wardrobe');
+const structuredReply = require('./structured-reply');
 const ipcMain = instrumentIpc(rawIpcMain);
 const fs = require('fs');
 const path = require('path');
@@ -5015,6 +5016,15 @@ async function runChatCloseSmoke(outputPath) {
 async function runP0ChatFlowSmoke(outputPath) {
   let result = null;
   try {
+    const recoveredReply = parseStructuredReply('{"reply":"我在。","memories":["invalid-candidate"],"mind":');
+    if (recoveredReply.content !== '我在。' || recoveredReply.memories.length
+      || Object.keys(recoveredReply.mind).length) {
+      throw new Error('Truncated structured reply must not expose metadata or consume state candidates.');
+    }
+    let incompleteReplyRejected = false;
+    try { parseStructuredReply('{"reply":"未结束'); }
+    catch (error) { incompleteReplyRejected = error.code === 'INVALID_STRUCTURED_REPLY'; }
+    if (!incompleteReplyRejected) throw new Error('Incomplete visible reply must be rejected.');
     const session = createNewChatSession();
     const reply = await chatSendHandler({
       sender: { id: -1, isDestroyed: () => false, send: () => {} }
@@ -6006,74 +6016,27 @@ function inferActionFromText(content) {
   return { action: 'wave', emotion: 'happy' };
 }
 
-function visibleReplyText(payload) {
-  return String(
-    payload?.reply
-    ?? payload?.content
-    ?? payload?.message
-    ?? payload?.answer
-    ?? payload?.text
-    ?? ''
-  ).trim();
-}
-
 function inspectStructuredReply(rawContent) {
-  const normalized = String(rawContent || '')
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-  if (!normalized) {
-    return {
-      parseSuccess: false,
-      visibleReplyPresent: false,
-      parserErrorCode: 'EMPTY_RESPONSE'
-    };
-  }
-  try {
-    const payload = JSON.parse(normalized);
-    return {
-      parseSuccess: true,
-      visibleReplyPresent: Boolean(visibleReplyText(payload)),
-      parserErrorCode: null
-    };
-  } catch {
-    return {
-      parseSuccess: false,
-      visibleReplyPresent: false,
-      parserErrorCode: 'JSON_PARSE_ERROR'
-    };
-  }
+  const result = structuredReply.read(rawContent);
+  return {
+    parseSuccess: result.parseSuccess,
+    visibleReplyPresent: Boolean(result.content),
+    parserErrorCode: result.parseSuccess ? null : result.recovered
+      ? 'RECOVERED_VISIBLE_REPLY' : 'JSON_PARSE_ERROR'
+  };
 }
 
 function parseStructuredReply(rawContent) {
-  const fallback = inferActionFromText(rawContent);
-  let payload = null;
-  try {
-    const normalized = rawContent
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
-    payload = JSON.parse(normalized);
-  } catch {
-    return {
-      content: rawContent,
-      action: fallback.action,
-      emotion: fallback.emotion,
-      memories: [],
-      episodes: [],
-      topics: [],
-      people: [],
-      projects: [],
-      habits: [],
-      commitments: [],
-      mind: {}
-    };
-  }
-
-  const content = visibleReplyText(payload);
+  const result = structuredReply.read(rawContent);
+  const content = result.content;
   if (!content) {
-    throw new Error('DeepSeek 返回的 JSON 中没有可显示的回复，请重试。');
+    throw Object.assign(new Error('回复格式不完整或没有可显示的正文，请重试。'), {
+      code: 'INVALID_STRUCTURED_REPLY'
+    });
   }
+  // Recovered/plain text has no trusted structured state candidates.
+  const payload = result.parseSuccess ? result.payload : {};
+  const fallback = inferActionFromText(content);
   return {
     content,
     action: PET_ACTIONS.has(payload.action) ? payload.action : fallback.action,

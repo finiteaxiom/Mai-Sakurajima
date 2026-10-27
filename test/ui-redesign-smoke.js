@@ -46,6 +46,9 @@ if (!process.versions.electron) {
     window.showInactive();
     await window.loadFile(path.join(__dirname, '../renderer/chat.html'));
     await delay(600);
+    const brokenReply = '{"reply":"我在。","memories":["private-metadata"],"mind":';
+    await run(`loadHistory([{role:'assistant',content:${JSON.stringify(brokenReply)}},{role:'user',content:${JSON.stringify(brokenReply)}}]);`);
+    assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bubble')).map(el => el.textContent)`), ['我在。', brokenReply]);
     await run(`window.maiAppearance.apply({theme:'light'}); loadHistory([
       {role:'user',content:'今天有一点累。',createdAt:'2026-10-21T12:14:00Z'},
       {role:'assistant',content:'辛苦了，学弟。\\n先休息一下吧，今天想和我聊些什么？',createdAt:'2026-10-21T12:15:00Z'},
