@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="wallpaper.css">
     <link rel="stylesheet" href="mai-design.css">
     <link rel="stylesheet" href="diagnostics.css">
+    <link rel="stylesheet" href="product-layout.css">
   </head>
   <body class="ui-chat">
     <div id="wallpaper-layer" class="wallpaper-layer" aria-hidden="true"></div>
@@ -40,8 +41,8 @@
         </div>
         <div class="workspace-brand"><span id="workspace-location">陪伴与对话</span></div>
         <nav class="mode-tabs" aria-label="工作模式">
-          <button class="mode-tab" data-mode-tab="chat" type="button" aria-pressed="true">Chat · 陪伴</button>
-          <button class="mode-tab" data-mode-tab="agent" type="button" aria-pressed="false">Work · 工作</button>
+          <button class="mode-tab" data-mode-tab="chat" type="button" aria-pressed="true">陪伴</button>
+          <button class="mode-tab" data-mode-tab="agent" type="button" aria-pressed="false">工作</button>
         </nav>
         <div class="workspace-topbar__actions">
           <button id="companion-inspector-toggle" class="workspace-chrome-button companion-inspector-toggle" type="button" aria-label="打开陪伴信息面板" title="陪伴信息" aria-controls="companion-context" aria-expanded="false">
@@ -62,35 +63,27 @@
           <button id="mai-avatar-button" class="portrait-wrap avatar-trigger" type="button" aria-label="更换麻衣头像" title="更换麻衣头像" aria-haspopup="dialog"><img id="portrait" src="../assets/mai-profile.png" alt=""></button>
           <div class="identity">
             <h1>Mai Sakurajima</h1>
-            <p><span id="connection-dot" class="connection-dot"></span><span id="connection-label">正在检查连接…</span></p>
+            <p hidden><span id="connection-dot" class="connection-dot"></span><span id="connection-label">正在检查连接…</span></p>
             <p id="mood-label" class="mood-label">安静陪伴</p>
           </div>
         </div>
-        <nav class="header-actions mode-feature mode-feature--chat" aria-label="主要功能">
-          <button id="new-chat-button" class="icon-button nav-item nav-item--primary" type="button" aria-label="清空当前上下文并开始新对话" title="清空上下文 / 新对话" data-label="新对话">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v8a3.5 3.5 0 0 1-3.5 3.5H8L4 21v-4.4A3.5 3.5 0 0 1 2.5 14V7A2.5 2.5 0 0 1 5 4.5Z"></path><path d="M12 8v7M8.5 11.5h7"></path></svg>
-          </button>
-          <button id="assistant-button" class="icon-button nav-item" type="button" aria-label="生活陪伴" title="每日简报、专注与生活陪伴" data-label="生活陪伴">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="m14.8 8.2-1.7 4.9-4.9 1.7 1.7-4.9 4.9-1.7Z"></path></svg>
-          </button>
-          <button id="life-button" class="icon-button nav-item" type="button" aria-label="日程与待办" title="日程、待办与关系面板" data-label="日程与待办">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3"></rect><path d="M7.5 3.5v4M16.5 3.5v4M3.5 10h17M8 14h3M8 17h7"></path></svg>
-          </button>
-          <button id="knowledge-button" class="icon-button nav-item" type="button" aria-label="个人资料库" title="个人资料库" data-label="个人资料库">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5h5.2c1.5 0 2.8 1.2 2.8 2.8v12.2c0-1.5-1.2-2.8-2.8-2.8H4V4.5Z"></path><path d="M20 4.5h-5.2c-1.5 0-2.8 1.2-2.8 2.8v12.2c0-1.5 1.2-2.8 2.8-2.8H20V4.5Z"></path></svg>
-          </button>
-          <button id="memory-button" class="icon-button nav-item" type="button" aria-label="长期记忆" title="长期记忆" data-label="长期记忆">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"></ellipse><path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path><path d="M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path></svg>
-          </button>
-          <button id="moments-button" class="icon-button nav-item" type="button" aria-label="私人朋友圈" title="麻衣的私人朋友圈" data-label="私人朋友圈">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="4"></rect><circle cx="9" cy="9" r="1.5"></circle><path d="m5.5 17 4.3-4 2.8 2.5 2.3-2.1 3.6 3.6"></path></svg>
-          </button>
-        </nav>
-        <section class="sidebar-section mode-feature mode-feature--chat" aria-labelledby="projects-heading">
-          <div class="sidebar-section__heading"><span id="projects-heading">共同计划</span><button id="shared-life-button" type="button" aria-label="管理共同计划" title="管理共同计划">＋</button></div>
-          <div id="companion-plan-list" class="sidebar-collection"></div>
-          <p id="companion-plan-empty" class="sidebar-empty">还没有共同计划</p>
-        </section>
+<nav class="header-actions mode-feature mode-feature--chat" aria-label="主要功能"><button aria-label="清空当前上下文并开始新对话" class="icon-button nav-item nav-item--primary" data-label="新对话" id="new-chat-button" title="清空上下文 / 新对话" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v8a3.5 3.5 0 0 1-3.5 3.5H8L4 21v-4.4A3.5 3.5 0 0 1 2.5 14V7A2.5 2.5 0 0 1 5 4.5Z"></path><path d="M12 8v7M8.5 11.5h7"></path></svg>
+</button><details class="sidebar-group"><summary>一起生活</summary><div><button aria-label="生活陪伴" class="icon-button nav-item" data-label="生活陪伴" id="assistant-button" title="每日简报、专注与生活陪伴" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="m14.8 8.2-1.7 4.9-4.9 1.7 1.7-4.9 4.9-1.7Z"></path></svg>
+</button><button aria-label="日程与待办" class="icon-button nav-item" data-label="日程与待办" id="life-button" title="日程、待办与关系面板" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><rect height="15" rx="3" width="17" x="3.5" y="5.5"></rect><path d="M7.5 3.5v4M16.5 3.5v4M3.5 10h17M8 14h3M8 17h7"></path></svg>
+</button><section aria-labelledby="projects-heading" class="sidebar-section mode-feature mode-feature--chat">
+<div class="sidebar-section__heading"><span id="projects-heading">共同计划</span><button aria-label="管理共同计划" id="shared-life-button" title="管理共同计划" type="button">＋</button></div>
+<div class="sidebar-collection" id="companion-plan-list"></div>
+<p class="sidebar-empty" id="companion-plan-empty">还没有共同计划</p>
+</section></div></details><details class="sidebar-group"><summary>记忆与资料</summary><div><button aria-label="长期记忆" class="icon-button nav-item" data-label="长期记忆" id="memory-button" title="长期记忆" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"></ellipse><path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path><path d="M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path></svg>
+</button><button aria-label="个人资料库" class="icon-button nav-item" data-label="个人资料库" id="knowledge-button" title="个人资料库" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M4 4.5h5.2c1.5 0 2.8 1.2 2.8 2.8v12.2c0-1.5-1.2-2.8-2.8-2.8H4V4.5Z"></path><path d="M20 4.5h-5.2c-1.5 0-2.8 1.2-2.8 2.8v12.2c0-1.5 1.2-2.8 2.8-2.8H20V4.5Z"></path></svg>
+</button></div></details><button aria-label="私人朋友圈" class="icon-button nav-item" data-label="私人朋友圈" id="moments-button" title="麻衣的私人朋友圈" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><rect height="16" rx="4" width="17" x="3.5" y="4"></rect><circle cx="9" cy="9" r="1.5"></circle><path d="m5.5 17 4.3-4 2.8 2.5 2.3-2.1 3.6 3.6"></path></svg>
+</button></nav>
         <section class="sidebar-section sidebar-section--recent mode-feature mode-feature--chat" aria-labelledby="recent-heading">
           <div class="sidebar-section__heading"><span id="recent-heading">最近</span><button id="history-button" type="button" aria-label="查看全部历史对话" title="全部历史">•••</button></div>
           <div id="recent-list" class="sidebar-collection"></div>
@@ -98,9 +91,8 @@
         </section>
         </div>
         <div class="sidebar-tools mode-feature mode-feature--chat">
-          <button id="voice-call-button" class="icon-button nav-item" type="button" aria-label="和麻衣语音通话" title="实时语音通话" data-label="语音通话">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 4.8 5.3c-1.1.7-.8 3.8 1.8 7.9s5.2 5.8 6.3 5.1l2.4-1.5-2.8-4.3-2.1 1.3c-.8-.6-1.6-1.6-2.3-2.7s-1.2-2.3-1.4-3.2l2.1-1.3-1.6-2.8Z"></path><path d="M14.2 5.4c1.8.4 3.2 1.8 3.6 3.6M14.8 2c3.3.7 5.9 3.3 6.6 6.6"></path></svg>
-          </button>
+
+          <button id="sidebar-wardrobe" class="icon-button nav-item" type="button" data-label="桌宠与衣橱" aria-label="桌宠与衣橱"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4-5 3 3 5 2-1v9h8v-9l2 1 3-5-5-3c0 4-8 4-8 0Z"></path></svg></button>
           <button id="settings-button" class="icon-button nav-item" type="button" aria-label="设置" title="模型、声音与陪伴设置" data-label="设置">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"></path><circle cx="8" cy="7" r="2"></circle><circle cx="16" cy="17" r="2"></circle></svg>
           </button>
@@ -120,15 +112,13 @@
             <small>此工作台不会读取或写入陪伴记忆。</small>
           </div>
         </section>
-        <div class="sidebar-account">
-          <button id="user-avatar-button" class="avatar-trigger avatar-trigger--user" type="button" aria-label="更换用户头像" title="更换用户头像" aria-haspopup="dialog"><img id="user-avatar" src="../assets/mai-icon.png" alt=""></button><span><strong>学弟</strong><small>本地私人空间</small></span><span class="sidebar-account__status" title="数据保存在本机"></span>
-        </div>
+
       </header>
 
       <section class="conversation-workspace">
         <header class="conversation-heading">
           <div><span id="conversation-runtime-eyebrow" class="eyebrow">陪你聊聊</span><h2 id="active-session-title">新对话</h2></div>
-          <div class="conversation-badges"><span id="conversation-model-badge">DeepSeek</span><span id="conversation-memory-badge">记忆已开启</span></div>
+
         </header>
         <button id="scroll-latest" class="scroll-latest" type="button" hidden>↓ 回到底部</button>
         <section id="messages" class="messages" aria-live="polite">
@@ -147,6 +137,9 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"></path></svg>
           </button>
           <textarea id="message-input" rows="1" maxlength="3000" placeholder="想和麻衣聊些什么？" aria-label="聊天内容"></textarea>
+          <button id="voice-call-button" class="voice-input-button mode-feature mode-feature--chat" type="button" aria-label="和麻衣语音通话" title="实时语音通话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 4.8 5.3c-1.1.7-.8 3.8 1.8 7.9s5.2 5.8 6.3 5.1l2.4-1.5-2.8-4.3-2.1 1.3c-.8-.6-1.6-1.6-2.3-2.7s-1.2-2.3-1.4-3.2l2.1-1.3-1.6-2.8Z"></path><path d="M14.2 5.4c1.8.4 3.2 1.8 3.6 3.6M14.8 2c3.3.7 5.9 3.3 6.6 6.6"></path></svg>
+          </button>
           <button id="send-button" class="send-button" type="submit" aria-label="发送">发送</button>
         </form>
         <div id="chat-workspace-capability" class="chat-workspace-capability mode-feature mode-feature--chat" aria-live="polite"></div>
@@ -155,6 +148,7 @@
 
       <aside id="companion-context" class="companion-context mode-feature mode-feature--chat" aria-label="陪伴信息">
         <button id="close-companion-inspector" class="icon-button inspector-close" type="button" aria-label="关闭陪伴信息">×</button>
+        <div class="conversation-heading__meta"><span id="conversation-model-badge">DeepSeek</span><span id="conversation-memory-badge">记忆已开启</span></div>
         <section class="companion-presence-card">
           <img src="../assets/mai-profile.png" alt="樱岛麻衣">
           <div><strong>樱岛麻衣</strong><p><span class="presence-dot"></span>一直在这里陪着你</p></div>
@@ -280,263 +274,607 @@
       </section>
     </div>
 
-    <div id="settings-overlay" class="overlay overlay--hidden">
-      <section class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <div class="settings-title-row">
-          <div>
-            <h2 id="settings-title">模型与陪伴设置</h2>
-            <p>选择模型来源，并设置麻衣的性格、记忆、主动关心和声音。</p>
-          </div>
-          <button id="close-settings" class="icon-button icon-button--small" type="button" aria-label="关闭">×</button>
-        </div>
-
-        <label class="field">
-          <span>API Key</span>
-          <input id="api-key" type="password" maxlength="512" autocomplete="off" placeholder="sk-…">
-          <small id="key-hint">Key 不会显示在聊天页面中。</small>
-        </label>
-
-        <label class="field">
-          <span>模型来源</span>
-          <select id="model-provider">
-            <option value="deepseek">DeepSeek 云端 API</option>
-            <option value="local" disabled>本地模型（接口已预留，当前尚不可用）</option>
-          </select>
-          <small id="model-provider-hint">当前版本使用 DeepSeek；本地模型接入后才会开放。</small>
-        </label>
-
-        <label class="field">
-          <span>模型</span>
-          <select id="model">
-            <option value="deepseek-v4-flash">DeepSeek V4 Flash（推荐，快速）</option>
-            <option value="deepseek-v4-pro">DeepSeek V4 Pro（能力更强）</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>性格</span>
-          <select id="personality">
-            <option value="classic">经典麻衣 · 从容俏皮</option>
-            <option value="gentle">温柔陪伴 · 耐心治愈</option>
-            <option value="playful">活泼爱逗 · 轻松撒娇</option>
-            <option value="focused">专注搭档 · 冷静高效</option>
-            <option value="open">坦率开放 · 亲密自然</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>自定义性格补充</span>
-          <textarea id="custom-prompt" rows="3" maxlength="1000" placeholder="例如：叫我小明；回答时更简短一些。"></textarea>
-          <small>可留空。请勿在这里填写 API Key 或其他敏感信息。</small>
-        </label>
-
-        <div class="toggle-group">
-          <label class="toggle-row">
-            <span>
-              <strong>长期记忆</strong>
-              <small>带原话证据的分层记忆；最多 10000 条，可从历史对话修复</small>
-            </span>
-            <input id="memory-enabled" type="checkbox" checked>
-          </label>
-          <label class="toggle-row">
-            <span>
-              <strong>主动聊天</strong>
-              <small>结合现实时间、对话和记忆主动提问；会消耗少量 API</small>
-            </span>
-            <input id="proactive-enabled" type="checkbox" checked>
-          </label>
-          <label class="toggle-row">
-            <span>
-              <strong>女友陪伴模式</strong>
-              <small>未回复时结合对话与记忆主动联系；会消耗少量 API 额度</small>
-            </span>
-            <input id="girlfriend-enabled" type="checkbox">
-          </label>
-          <label class="toggle-row">
-            <span>
-              <strong>私人朋友圈自动更新</strong>
-              <small>每天约 1—2 条，仅保存在本机；生成内容会消耗少量 API</small>
-            </span>
-            <input id="moments-enabled" type="checkbox" checked>
-          </label>
-          <label class="toggle-row">
-            <span>
-              <strong>现实天气</strong>
-              <small>仅在开启后把填写的城市发送给 Open-Meteo 获取天气</small>
-            </span>
-            <input id="weather-enabled" type="checkbox">
-          </label>
-        </div>
-
-        <section class="field">
-          <span>主动聊天频率</span>
-          <div class="frequency-fields">
-            <label>
-              <small>最短间隔（分钟）</small>
-              <input id="proactive-interval-minutes" type="number" min="1" max="10080" step="1" value="45">
-            </label>
-            <label>
-              <small>每天最多（条）</small>
-              <input id="proactive-daily-limit" type="number" min="1" max="999" step="1" value="5">
-            </label>
-          </div>
-          <small>可设置 1–10080 分钟、1–999 条。她仍会先判断是否有值得继续的话题。</small>
-        </section>
-
-        <section class="field">
-          <span>女友模式关心频率</span>
-          <div class="frequency-fields">
-            <label>
-              <small>追问间隔（分钟）</small>
-              <input id="girlfriend-interval-minutes" type="number" min="1" max="10080" step="1" value="20">
-            </label>
-            <label>
-              <small>每轮最多（条）</small>
-              <input id="girlfriend-max-follow-ups" type="number" min="1" max="999" step="1" value="4">
-            </label>
-          </div>
-          <small>你一回复，她就停止本轮追问；允许设置到数百条，但高频会产生大量 API 调用。</small>
-        </section>
-
-        <section class="voice-settings-panel">
-          <div class="voice-settings-title">
-            <div>
-              <strong>高质量本地语音</strong>
-              <small>CosyVoice 在本机生成带情绪的女声，SenseVoice 辅助判断语气；麦克风音频不会上传。</small>
-            </div>
-            <button id="test-voice" class="button button--secondary" type="button">试听</button>
-          </div>
-          <label class="toggle-row voice-auto-row">
-            <span>
-              <strong>自动朗读文字回复</strong>
-              <small>语音输入和实时通话始终朗读；这里控制普通文字聊天</small>
-            </span>
-            <input id="voice-auto-read" type="checkbox">
-          </label>
-          <div class="voice-select-grid">
-            <label>
-              <small>朗读引擎</small>
-              <select id="voice-engine">
-                <option value="local">CosyVoice · 本地情绪女声</option>
-                <option value="system">Windows 系统语音（备用）</option>
-              </select>
-            </label>
-            <label>
-              <small>系统备用声音</small>
-              <select id="voice-name"><option value="">系统默认声音</option></select>
-            </label>
-            <label>
-              <small>识别语言</small>
-              <select id="voice-culture"><option value="zh-CN">普通话（简体中文）</option></select>
-            </label>
-          </div>
-          <div class="local-voice-install">
-            <div>
-              <strong id="local-voice-title">正在检查本地女声…</strong>
-              <small id="local-voice-detail">全新安装约下载 11 GB，请预留至少 16 GB；旧版用户只补充情绪模型。</small>
-            </div>
-            <button id="install-local-voice" class="button button--secondary" type="button">安装本地女声</button>
-          </div>
-          <div id="local-voice-progress" class="local-voice-progress local-voice-progress--hidden">
-            <i id="local-voice-progress-bar"></i>
-          </div>
-          <div class="voice-slider-grid">
-            <label><small>语速 <b id="voice-rate-value">1.00×</b></small><input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
-            <label><small>系统音调 <b id="voice-pitch-value">1.00×</b></small><input id="voice-pitch" type="range" min="0.7" max="1.3" step="0.05" value="1"></label>
-            <label><small>音量 <b id="voice-volume-value">100%</b></small><input id="voice-volume" type="range" min="0.1" max="1" step="0.05" value="1"></label>
-          </div>
-          <p id="voice-capability-status" class="voice-capability-status">正在检查本地语音组件…</p>
-        </section>
-
-        <label class="field">
-          <span>天气城市（可选）</span>
-          <input id="weather-city" type="text" maxlength="80" placeholder="例如：上海、成都、Tokyo">
-          <small>天气默认关闭；城市名称仅用于请求 Open-Meteo，不会发送 API Key 或聊天内容。</small>
-        </label>
-
-        <section class="wallpaper-settings" aria-labelledby="wallpaper-settings-title">
-          <div class="wallpaper-settings__heading">
-            <div>
-              <strong id="wallpaper-settings-title">壁纸</strong>
-              <small>项目不内置壁纸。你选择的图片只会复制到本机应用数据目录。</small>
-            </div>
-            <span id="wallpaper-selection-label" class="wallpaper-selection-label"></span>
-          </div>
-          <div class="wallpaper-actions">
-            <button id="choose-custom-wallpaper" class="input-dialog-button input-dialog-button--primary" type="button">选择本地壁纸</button>
-            <button id="clear-custom-wallpaper" class="input-dialog-button" type="button">移除本地壁纸</button>
-          </div>
-          <div id="wallpaper-grid" class="wallpaper-grid" role="radiogroup" aria-label="本地壁纸"></div>
-        </section>
-
-        <section class="appearance-settings" aria-labelledby="appearance-settings-title">
-          <div class="appearance-settings__heading">
-            <strong id="appearance-settings-title">外观与节奏</strong>
-            <small>只保留影响陪伴体验的选项；壁纸始终位于内容和玻璃材质之下。</small>
-          </div>
-          <label>主题
-            <select id="appearance-theme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
-          </label>
-          <label>玻璃层次
-            <select id="appearance-glass"><option value="soft">柔和</option><option value="balanced">平衡</option><option value="clear">清晰</option></select>
-          </label>
-          <label>聊天密度
-            <select id="appearance-density"><option value="compact">紧凑</option><option value="comfortable">舒适</option><option value="relaxed">宽松</option></select>
-          </label>
-          <label>透明度 <output id="appearance-transparency-value">72%</output>
-            <input id="appearance-transparency" type="range" min="58" max="90" step="1" value="72">
-          </label>
-          <label>界面缩放 <output id="appearance-scale-value">100%</output>
-            <input id="appearance-scale" type="range" min="90" max="110" step="10" value="100">
-          </label>
-          <label>动效
-            <select id="appearance-motion"><option value="off">关闭</option><option value="reduced">克制</option><option value="full">自然</option></select>
-          </label>
-          <section id="appearance-preview" class="appearance-preview" aria-label="外观实时预览">
-            <div class="appearance-preview__heading"><span>LIVE PREVIEW</span><strong>与麻衣聊一会儿</strong></div>
-            <div class="appearance-preview__conversation">
-              <div class="appearance-preview__mai"><i>M</i><p>今天过得怎么样？</p></div>
-              <p class="appearance-preview__user">还好，想和你安静地聊一会儿。</p>
-            </div>
-            <div class="appearance-preview__composer"><span>想和麻衣聊些什么……</span><b>↑</b></div>
-          </section>
-        </section>
-
-        <section class="appearance-settings" aria-labelledby="wardrobe-title">
-          <strong id="wardrobe-title">桌宠衣橱</strong>
-          <p>挑选装扮，预览麻衣的日常动作。</p>
-          <button id="open-wardrobe" class="button button--secondary" type="button">衣橱与动作</button>
-          <span id="wardrobe-launch-status" role="status"></span>
-        </section>
-
-        <div class="endpoint">
-          <span>接口地址</span>
-          <code>https://api.deepseek.com/chat/completions</code>
-        </div>
-
-        <section class="appearance-settings" aria-labelledby="diagnostics-title">
-          <strong id="diagnostics-title">运行诊断</strong>
-          <p>本地保存运行状态、耗时和错误码，不记录聊天正文、文件内容、音频或密钥。导出最近最多 1000 条记录，供排查问题。</p>
-          <div class="settings-actions">
-            <button id="diagnostics-refresh" class="button button--secondary" type="button">查看诊断</button>
-            <button id="diagnostics-folder" class="button button--secondary" type="button">打开日志目录</button>
-            <button id="diagnostics-export" class="button button--secondary" type="button">导出脱敏诊断</button>
-          </div>
-          <pre id="diagnostics-output" role="status">点击“查看诊断”读取近期运行记录。</pre>
-        </section>
-
-        <div id="settings-status" class="settings-status" role="status"></div>
-
-        <div class="settings-actions">
-          <button id="clear-key" class="button button--danger" type="button">清除 Key</button>
-          <button id="preview-greeting" class="button button--secondary" type="button">试主动聊天</button>
-          <button id="preview-girlfriend" class="button button--secondary" type="button">试女友消息</button>
-          <span class="actions-spacer"></span>
-          <button id="test-connection" class="button button--secondary" type="button">测试连接</button>
-          <button id="save-settings" class="button button--primary" type="button">保存</button>
-        </div>
-      </section>
+<div class="overlay overlay--hidden" id="settings-overlay">
+ <section aria-labelledby="settings-title" aria-modal="true" class="settings-card settings-page" role="dialog">
+  <div class="settings-title-row">
+   <div>
+    <h2 id="settings-title">
+     设置
+    </h2>
+    <p>
+     按你的习惯，调整 Mai。
+    </p>
+   </div>
+   <button aria-label="返回聊天" class="icon-button icon-button--small" id="close-settings" type="button">
+    ×
+   </button>
+  </div>
+  <nav aria-label="设置分类" class="settings-navigation">
+   <button aria-controls="settings-panel-appearance" aria-current="page" data-settings-section="appearance" id="settings-nav-appearance" type="button">
+    外观
+   </button>
+   <button aria-controls="settings-panel-companion" data-settings-section="companion" id="settings-nav-companion" type="button">
+    陪伴偏好
+   </button>
+   <button aria-controls="settings-panel-voice" data-settings-section="voice" id="settings-nav-voice" type="button">
+    语音
+   </button>
+   <button aria-controls="settings-panel-model" data-settings-section="model" id="settings-nav-model" type="button">
+    模型连接
+   </button>
+   <button aria-controls="settings-panel-data" data-settings-section="data" id="settings-nav-data" type="button">
+    数据与隐私
+   </button>
+   <button aria-controls="settings-panel-diagnostics" data-settings-section="diagnostics" id="settings-nav-diagnostics" type="button">
+    诊断与关于
+   </button>
+  </nav>
+  <div class="settings-content">
+   <section aria-labelledby="settings-nav-appearance" class="settings-panel" id="settings-panel-appearance">
+    <h3>
+     外观
+    </h3>
+    <p class="settings-description">
+     外观可即时预览，点击保存后保留。壁纸、头像和衣橱独立操作立即生效。
+    </p>
+    <section aria-labelledby="appearance-settings-title" class="appearance-settings">
+     <div class="appearance-settings__heading">
+      <strong id="appearance-settings-title">
+       外观与节奏
+      </strong>
+      <small>
+       调整明暗、文字大小与界面节奏。
+      </small>
+     </div>
+     <label>
+      主题
+      <select id="appearance-theme">
+       <option value="auto">
+        跟随系统
+       </option>
+       <option value="light">
+        浅色
+       </option>
+       <option value="dark">
+        深色
+       </option>
+      </select>
+     </label>
+     <label>
+      玻璃层次
+      <select id="appearance-glass">
+       <option value="soft">
+        柔和
+       </option>
+       <option value="balanced">
+        平衡
+       </option>
+       <option value="clear">
+        清晰
+       </option>
+      </select>
+     </label>
+     <label>
+      聊天密度
+      <select id="appearance-density">
+       <option value="compact">
+        紧凑
+       </option>
+       <option value="comfortable">
+        舒适
+       </option>
+       <option value="relaxed">
+        宽松
+       </option>
+      </select>
+     </label>
+     <label>
+      透明度
+      <output id="appearance-transparency-value">
+       72%
+      </output>
+      <input id="appearance-transparency" max="90" min="58" step="1" type="range" value="72"/>
+     </label>
+     <label>
+      界面缩放
+      <output id="appearance-scale-value">
+       100%
+      </output>
+      <input id="appearance-scale" max="110" min="90" step="10" type="range" value="100"/>
+     </label>
+     <label>
+      动效
+      <select id="appearance-motion">
+       <option value="off">
+        关闭
+       </option>
+       <option value="reduced">
+        克制
+       </option>
+       <option value="full">
+        自然
+       </option>
+      </select>
+     </label>
+     <section aria-label="外观实时预览" class="appearance-preview" id="appearance-preview">
+      <div class="appearance-preview__heading">
+       <span>
+        LIVE PREVIEW
+       </span>
+       <strong>
+        与麻衣聊一会儿
+       </strong>
+      </div>
+      <div class="appearance-preview__conversation">
+       <div class="appearance-preview__mai">
+        <i>
+         M
+        </i>
+        <p>
+         今天过得怎么样？
+        </p>
+       </div>
+       <p class="appearance-preview__user">
+        还好，想和你安静地聊一会儿。
+       </p>
+      </div>
+      <div class="appearance-preview__composer">
+       <span>
+        想和麻衣聊些什么……
+       </span>
+       <b>
+        ↑
+       </b>
+      </div>
+     </section>
+    </section>
+    <section aria-labelledby="wallpaper-settings-title" class="wallpaper-settings">
+     <div class="wallpaper-settings__heading">
+      <div>
+       <strong id="wallpaper-settings-title">
+        壁纸
+       </strong>
+       <small>
+        选择一张喜欢的图片，作为聊天背景。图片仅保存在本机。
+       </small>
+      </div>
+      <span class="wallpaper-selection-label" id="wallpaper-selection-label">
+      </span>
+     </div>
+     <div class="wallpaper-actions">
+      <button class="input-dialog-button input-dialog-button--primary" id="choose-custom-wallpaper" type="button">
+       选择本地壁纸
+      </button>
+      <button class="input-dialog-button" id="clear-custom-wallpaper" type="button">
+       移除本地壁纸
+      </button>
+     </div>
+     <div aria-label="本地壁纸" class="wallpaper-grid" id="wallpaper-grid" role="radiogroup">
+     </div>
+    </section>
+    <div class="user-avatar-setting">
+     <button aria-haspopup="dialog" aria-label="更换用户头像" class="avatar-trigger avatar-trigger--user" id="user-avatar-button" title="更换用户头像" type="button">
+      <img alt="" id="user-avatar" src="../assets/mai-icon.png"/>
+     </button>
+     <span>
+      用户头像
+      <small>
+       点击图片更换本地头像
+      </small>
+     </span>
     </div>
+    <section aria-labelledby="wardrobe-title" class="appearance-settings">
+     <strong id="wardrobe-title">
+      桌宠衣橱
+     </strong>
+     <p>
+      挑选装扮，预览麻衣的日常动作。
+     </p>
+     <button class="button button--secondary" id="open-wardrobe" type="button">
+      衣橱与动作
+     </button>
+     <span id="wardrobe-launch-status" role="status">
+     </span>
+    </section>
+   </section>
+   <section aria-labelledby="settings-nav-companion" class="settings-panel" hidden="" id="settings-panel-companion">
+    <h3>
+     陪伴偏好
+    </h3>
+    <p class="settings-description">
+     设置回应风格和主动联系的节奏。
+    </p>
+    <label class="field">
+     <span>
+      性格
+     </span>
+     <select id="personality">
+      <option value="classic">
+       经典麻衣 · 从容俏皮
+      </option>
+      <option value="gentle">
+       温柔陪伴 · 耐心治愈
+      </option>
+      <option value="playful">
+       活泼爱逗 · 轻松撒娇
+      </option>
+      <option value="focused">
+       专注搭档 · 冷静高效
+      </option>
+      <option value="open">
+       坦率开放 · 亲密自然
+      </option>
+     </select>
+    </label>
+    <label class="field">
+     <span>
+      自定义性格补充
+     </span>
+     <textarea id="custom-prompt" maxlength="1000" placeholder="例如：叫我小明；回答时更简短一些。" rows="3"></textarea>
+     <small>
+      可留空。请勿在这里填写 API Key 或其他敏感信息。
+     </small>
+    </label>
+    <label class="field">
+     <span>
+      天气城市（可选）
+     </span>
+     <input id="weather-city" maxlength="80" placeholder="例如：上海、成都、Tokyo" type="text"/>
+     <small>
+      天气默认关闭；城市名称仅用于请求 Open-Meteo，不会发送 API Key 或聊天内容。
+     </small>
+    </label>
+    <label class="toggle-row">
+     <span>
+      <strong>
+       主动聊天
+      </strong>
+      <small>
+       结合现实时间、对话和记忆主动提问；会消耗少量 API
+      </small>
+     </span>
+     <input checked="" id="proactive-enabled" type="checkbox"/>
+    </label>
+    <label class="toggle-row">
+     <span>
+      <strong>
+       女友陪伴模式
+      </strong>
+      <small>
+       未回复时结合对话与记忆主动联系；会消耗少量 API 额度
+      </small>
+     </span>
+     <input id="girlfriend-enabled" type="checkbox"/>
+    </label>
+    <label class="toggle-row">
+     <span>
+      <strong>
+       私人朋友圈自动更新
+      </strong>
+      <small>
+       每天约 1—2 条，仅保存在本机；生成内容会消耗少量 API
+      </small>
+     </span>
+     <input checked="" id="moments-enabled" type="checkbox"/>
+    </label>
+    <label class="toggle-row">
+     <span>
+      <strong>
+       现实天气
+      </strong>
+      <small>
+       仅在开启后把填写的城市发送给 Open-Meteo 获取天气
+      </small>
+     </span>
+     <input id="weather-enabled" type="checkbox"/>
+    </label>
+    <section class="field">
+     <span>
+      主动聊天频率
+     </span>
+     <div class="frequency-fields">
+      <label>
+       <small>
+        最短间隔（分钟）
+       </small>
+       <input id="proactive-interval-minutes" max="10080" min="1" step="1" type="number" value="45"/>
+      </label>
+      <label>
+       <small>
+        每天最多（条）
+       </small>
+       <input id="proactive-daily-limit" max="999" min="1" step="1" type="number" value="5"/>
+      </label>
+     </div>
+     <small>
+      可设置 1–10080 分钟、1–999 条。她仍会先判断是否有值得继续的话题。
+     </small>
+    </section>
+    <section class="field">
+     <span>
+      女友模式关心频率
+     </span>
+     <div class="frequency-fields">
+      <label>
+       <small>
+        追问间隔（分钟）
+       </small>
+       <input id="girlfriend-interval-minutes" max="10080" min="1" step="1" type="number" value="20"/>
+      </label>
+      <label>
+       <small>
+        每轮最多（条）
+       </small>
+       <input id="girlfriend-max-follow-ups" max="999" min="1" step="1" type="number" value="4"/>
+      </label>
+     </div>
+     <small>
+      你一回复，她就停止本轮追问；允许设置到数百条，但高频会产生大量 API 调用。
+     </small>
+    </section>
+    <button class="button button--secondary" id="preview-greeting" type="button">
+     试主动聊天
+    </button>
+    <button class="button button--secondary" id="preview-girlfriend" type="button">
+     试女友消息
+    </button>
+   </section>
+   <section aria-labelledby="settings-nav-voice" class="settings-panel" hidden="" id="settings-panel-voice">
+    <h3>
+     语音
+    </h3>
+    <p class="settings-description">
+     管理朗读、语音引擎与本地安装。
+    </p>
+    <section class="voice-settings-panel">
+     <div class="voice-settings-title">
+      <div>
+       <strong>
+        高质量本地语音
+       </strong>
+       <small>
+        CosyVoice 在本机生成带情绪的女声，SenseVoice 辅助判断语气；麦克风音频不会上传。
+       </small>
+      </div>
+      <button class="button button--secondary" id="test-voice" type="button">
+       试听
+      </button>
+     </div>
+     <label class="toggle-row voice-auto-row">
+      <span>
+       <strong>
+        自动朗读文字回复
+       </strong>
+       <small>
+        语音输入和实时通话始终朗读；这里控制普通文字聊天
+       </small>
+      </span>
+      <input id="voice-auto-read" type="checkbox"/>
+     </label>
+     <div class="voice-select-grid">
+      <label>
+       <small>
+        朗读引擎
+       </small>
+       <select id="voice-engine">
+        <option value="local">
+         CosyVoice · 本地情绪女声
+        </option>
+        <option value="system">
+         Windows 系统语音（备用）
+        </option>
+       </select>
+      </label>
+      <label>
+       <small>
+        系统备用声音
+       </small>
+       <select id="voice-name">
+        <option value="">
+         系统默认声音
+        </option>
+       </select>
+      </label>
+      <label>
+       <small>
+        识别语言
+       </small>
+       <select id="voice-culture">
+        <option value="zh-CN">
+         普通话（简体中文）
+        </option>
+       </select>
+      </label>
+     </div>
+     <div class="local-voice-install">
+      <div>
+       <strong id="local-voice-title">
+        正在检查本地女声…
+       </strong>
+       <small id="local-voice-detail">
+        全新安装约下载 11 GB，请预留至少 16 GB；旧版用户只补充情绪模型。
+       </small>
+      </div>
+      <button class="button button--secondary" id="install-local-voice" type="button">
+       安装本地女声
+      </button>
+     </div>
+     <div class="local-voice-progress local-voice-progress--hidden" id="local-voice-progress">
+      <i id="local-voice-progress-bar">
+      </i>
+     </div>
+     <div class="voice-slider-grid">
+      <label>
+       <small>
+        语速
+        <b id="voice-rate-value">
+         1.00×
+        </b>
+       </small>
+       <input id="voice-rate" max="1.4" min="0.7" step="0.05" type="range" value="1"/>
+      </label>
+      <label>
+       <small>
+        系统音调
+        <b id="voice-pitch-value">
+         1.00×
+        </b>
+       </small>
+       <input id="voice-pitch" max="1.3" min="0.7" step="0.05" type="range" value="1"/>
+      </label>
+      <label>
+       <small>
+        音量
+        <b id="voice-volume-value">
+         100%
+        </b>
+       </small>
+       <input id="voice-volume" max="1" min="0.1" step="0.05" type="range" value="1"/>
+      </label>
+     </div>
+     <p class="voice-capability-status" id="voice-capability-status">
+      正在检查本地语音组件…
+     </p>
+    </section>
+   </section>
+   <section aria-labelledby="settings-nav-model" class="settings-panel" hidden="" id="settings-panel-model">
+    <h3>
+     模型连接
+    </h3>
+    <p class="settings-description">
+     模型请求所需上下文会发送至所选服务。密钥仅在本机安全保存。
+    </p>
+    <label class="field">
+     <span>
+      API Key
+     </span>
+     <input autocomplete="off" id="api-key" maxlength="512" placeholder="sk-…" type="password"/>
+     <small id="key-hint">
+      Key 不会显示在聊天页面中。
+     </small>
+    </label>
+    <label class="field">
+     <span>
+      模型来源
+     </span>
+     <select id="model-provider">
+      <option value="deepseek">
+       DeepSeek 云端 API
+      </option>
+      <option disabled="" value="local">
+       本地模型（接口已预留，当前尚不可用）
+      </option>
+     </select>
+     <small id="model-provider-hint">
+      当前版本使用 DeepSeek；本地模型接入后才会开放。
+     </small>
+    </label>
+    <label class="field">
+     <span>
+      模型
+     </span>
+     <select id="model">
+      <option value="deepseek-v4-flash">
+       DeepSeek V4 Flash（推荐，快速）
+      </option>
+      <option value="deepseek-v4-pro">
+       DeepSeek V4 Pro（能力更强）
+      </option>
+     </select>
+    </label>
+    <div class="endpoint">
+     <span>
+      接口地址
+     </span>
+     <code>
+      https://api.deepseek.com/chat/completions
+     </code>
+    </div>
+    <button class="button button--danger" id="clear-key" type="button">
+     清除 Key
+    </button>
+    <button class="button button--secondary" id="test-connection" type="button">
+     测试连接
+    </button>
+   </section>
+   <section aria-labelledby="settings-nav-data" class="settings-panel" hidden="" id="settings-panel-data">
+    <h3>
+     数据与隐私
+    </h3>
+    <p class="settings-description">
+     管理本机的记忆、资料和备份。云端对话不等于完全离线。
+    </p>
+    <label class="toggle-row">
+     <span>
+      <strong>
+       长期记忆
+      </strong>
+      <small>
+       带原话证据的分层记忆；最多 10000 条，可从历史对话修复
+      </small>
+     </span>
+     <input checked="" id="memory-enabled" type="checkbox"/>
+    </label>
+    <div class="settings-links">
+     <button class="button button--secondary" data-settings-link="memory-button" type="button">
+      管理长期记忆
+     </button>
+     <button class="button button--secondary" data-settings-link="shared-life-button" type="button">
+      备份、恢复与生活记录
+     </button>
+    </div>
+    <p>
+     对话与记忆保存在本机。模型、天气等服务只在相应功能中按既有规则请求。
+    </p>
+   </section>
+   <section aria-labelledby="settings-nav-diagnostics" class="settings-panel" hidden="" id="settings-panel-diagnostics">
+    <h3>
+     诊断与关于
+    </h3>
+    <p class="settings-description">
+     需要排查问题时，再展开运行信息。
+    </p>
+    <section aria-labelledby="diagnostics-title" class="appearance-settings">
+     <strong id="diagnostics-title">
+      运行诊断
+     </strong>
+     <p>
+      本地保存运行状态、耗时和错误码，不记录聊天正文、文件内容、音频或密钥。导出最近最多 1000 条记录，供排查问题。
+     </p>
+     <div class="settings-actions">
+      <button class="button button--secondary" id="diagnostics-refresh" type="button">
+       查看诊断
+      </button>
+      <button class="button button--secondary" id="diagnostics-folder" type="button">
+       打开日志目录
+      </button>
+      <button class="button button--secondary" id="diagnostics-export" type="button">
+       导出脱敏诊断
+      </button>
+     </div>
+     <pre id="diagnostics-output" role="status">点击“查看诊断”读取近期运行记录。</pre>
+    </section>
+   </section>
+  </div>
+  <footer class="settings-footer">
+   <div>
+    <p id="settings-draft-hint">
+     普通设置需保存；切换分类保留输入。
+    </p>
+    <div class="settings-status" id="settings-status" role="status">
+    </div>
+   </div>
+   <div class="settings-actions">
+    <button class="button button--secondary" id="discard-settings" type="button">
+     还原未保存更改
+    </button>
+    <button class="button button--primary" id="save-settings" type="button">
+     保存
+    </button>
+   </div>
+  </footer>
+ </section>
+</div>
 
     <div id="memory-overlay" class="overlay overlay--hidden">
       <section class="settings-card memory-card" role="dialog" aria-modal="true" aria-labelledby="memory-title">
@@ -912,6 +1250,7 @@
     <script src="work-renderer-controller.js"></script>
     <script src="workspace-explorer-controller.js"></script>
     <script src="work-renderer-bindings.js"></script>
+    <script src="settings-view.js"></script>
     <script src="ui-presentation.js"></script>
     <script src="../structured-reply.js"></script>
     <script src="chat.js"></script>

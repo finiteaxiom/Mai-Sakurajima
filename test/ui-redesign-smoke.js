@@ -49,6 +49,7 @@ if (!process.versions.electron) {
     const brokenReply = '{"reply":"我在。","memories":["private-metadata"],"mind":';
     await run(`loadHistory([{role:'assistant',content:${JSON.stringify(brokenReply)}},{role:'user',content:${JSON.stringify(brokenReply)}}]);`);
     assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bubble')).map(el => el.textContent)`), ['我在。', brokenReply]);
+    assert.equal(await run(`document.querySelector('.sidebar-account') === null && document.getElementById('composer').contains(document.getElementById('voice-call-button')) && document.getElementById('settings-overlay').contains(document.getElementById('user-avatar-button'))`),true);
     await run(`window.maiAppearance.apply({theme:'light'}); loadHistory([
       {role:'user',content:'今天有一点累。',createdAt:'2026-10-21T12:14:00Z'},
       {role:'assistant',content:'辛苦了，学弟。\\n先休息一下吧，今天想和我聊些什么？',createdAt:'2026-10-21T12:15:00Z'},
@@ -101,7 +102,7 @@ if (!process.versions.electron) {
       contrast.push(...ratios);
     }
     for (const size of [[900,640],[1180,820],[1440,900]]) { await geometry('chat',...size); await capture(`chat-${size[0]}`); }
-    await checkContrast(['.message--user .bubble','.message--assistant .bubble','.message-time','#send-button','#connection-label']);
+    await checkContrast(['.message--user .bubble','.message--assistant .bubble','.message-time','#send-button']);
     await run(`document.getElementById('companion-inspector-toggle').click()`); await delay();
     assert.equal(await run(`document.getElementById('companion-context').contains(document.activeElement)`),true);
     await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await delay();
@@ -119,15 +120,68 @@ if (!process.versions.electron) {
     await run(`for(let i=0;i<12;i++){document.getElementById('settings-button').click();document.getElementById('close-settings').click()} document.getElementById('settings-button').click()`); await delay();
     assert.equal(await run(`document.getElementById('settings-overlay').contains(document.activeElement)`),true);
     await capture('settings-light');
+    // Exercise the real settings bindings with an isolated persistence fixture.
+    for (const section of ['appearance','companion','voice','model','data','diagnostics']) {
+      await run(`document.querySelector('[data-settings-section="${section}"]').click()`);
+      assert.equal(await run(`document.querySelectorAll('.settings-panel:not([hidden])').length`),1);
+      assert.equal(await run(`document.getElementById('settings-panel-${section}').getBoundingClientRect().width>100`),true);
+    }
+    await run(`window.maiSettingsView.select('companion');customPromptInput.value='保留分类草稿';customPromptInput.dispatchEvent(new Event('input',{bubbles:true}));window.maiSettingsView.select('model');`);
+    assert.equal(await run(`customPromptInput.value`),'保留分类草稿');
+    await run(`closeSettings();openSettings('companion')`); await delay();
+    assert.equal(await run(`customPromptInput.value`),'保留分类草稿');
+    await run(`window.maiUiTest.failNextSave();saveSettings()`);
+    assert.equal(await run(`customPromptInput.value`),'保留分类草稿');
+    assert.equal(await run(`window.maiSettingsView.isDirty() && settingsStatus.classList.contains('settings-status--error')`),true);
+    await run(`saveSettings()`);
+    assert.equal(await run(`window.maiSettingsView.isDirty()`),false);
+    assert.equal(await run(`window.maiUiTest.savedConfig().customPrompt`),'保留分类草稿');
+    await run(`window.maiSettingsView.select('appearance');appearanceThemeInput.value='dark';appearanceThemeInput.dispatchEvent(new Event('change',{bubbles:true}));closeSettings()`);
+    assert.equal(await run(`document.documentElement.dataset.maiTheme`),'auto');
+    await run(`openSettings('appearance');document.getElementById('discard-settings').click()`);
+    assert.equal(await run(`appearanceThemeInput.value`),'auto');
+    for (const [width,height] of [[900,640],[760,680],[1180,820]]) {
+      window.setContentSize(width,height); await delay();
+      assert.equal(await run(`(()=>{const r=saveSettingsButton.getBoundingClientRect();return r.width>0&&r.bottom<=innerHeight&&r.left>=0&&document.documentElement.scrollWidth<=innerWidth})()`),true);
+      await capture(`settings-product-${width}`);
+    }
+    await run(`closeSettings()`); window.setContentSize(760,680); await delay();
+    assert.equal(await run(`document.querySelector('.chat-header').getClientRects().length`),0);
+    await run(`workspaceSidebarToggle.click();document.querySelectorAll('.sidebar-group')[1].open=true`); await delay();
+    assert.equal(await run(`memoryButton.getBoundingClientRect().width>0 && !memoryButton.closest('[inert]')`),true);
+    assert.equal(await run(`getComputedStyle(memoryButton,'::after').display!=='none' && settingsButton.getBoundingClientRect().bottom<=innerHeight`),true);
+    await capture('chat-narrow-navigation');
+    await run(`memoryButton.click()`); await delay();
+    assert.equal(await run(`chatApp.classList.contains('small-sidebar-open')`),false);
+    assert.equal(await run(`memoryOverlay.contains(document.activeElement)`),true);
+    await run(`document.getElementById('close-memory').click()`); window.setContentSize(1180,820); await delay();
+    await run(`closeSettings();chatConfig.configured=false;showWelcomeMessage();document.getElementById('welcome-connect-model').click()`); await delay();
+    assert.equal(await run(`document.getElementById('settings-panel-model').hidden`),false);
+    await capture('first-connection-settings');
+    await run(`chatConfig.configured=true;closeSettings();loadHistory([]);window.maiUiTest.failNextChat();messageInput.value='发送失败保留的文本';sendMessage()`);
+    assert.equal(await run(`messageInput.value`),'发送失败保留的文本');
+    assert.equal(await run(`!!document.querySelector('#notice .notice-recover')`),true);
+    assert.equal(await run(`document.querySelectorAll('.message--pending').length`),0);
+    await capture('chat-recovery');
+    await run(`hideNotice();messageInput.value='';resizeInput();loadHistory([{role:'user',content:'今天有一点累。'},{role:'assistant',content:'辛苦了，先休息一下吧。'}]);closeSettings();settingsButton.click();window.maiSettingsView.select('appearance')`); await delay();
+    assert.equal(await run(`!!document.getElementById('voice-engine').value && !!document.getElementById('local-voice-title').textContent && !!document.getElementById('install-local-voice').textContent`),true);
+    assert.equal(await run(`!!document.getElementById('choose-custom-wallpaper') && !!document.getElementById('clear-custom-wallpaper') && document.querySelectorAll('#wallpaper-grid .wallpaper-option').length === chatConfig.wallpapers.length`),true);
     await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await delay();
     assert.equal(await run(`document.querySelector('.chat-app').inert`),false);
     assert.equal(await run(`document.activeElement.id`),'settings-button');
+    await run(`document.getElementById('mai-avatar-button').click()`); await delay();
+    assert.equal(await run(`document.getElementById('avatar-picker-overlay').contains(document.activeElement) && !!document.getElementById('choose-custom-avatar') && !!document.getElementById('clear-custom-avatar')`),true);
+    assert.equal(await run(`document.querySelectorAll('.avatar-option').length`),0);
+    await capture('avatar-picker');
+    await run(`document.getElementById('close-avatar-picker').click()`); await delay();
     await run(`document.querySelector('[data-mode-tab="agent"]').click()`); await delay(500);
     for (const size of [[900,640],[1180,820],[1440,900]]) { await geometry('work',...size); await capture(`work-${size[0]}`); }
     await run(`document.querySelector('[data-workspace-path="README.md"]')?.click()`); await delay();
     // Use the actual entry rendered by the existing Explorer and its existing preview IPC.
     await run(`Array.from(document.querySelectorAll('.workspace-explorer__entry')).find(e=>e.textContent.includes('README.md')).click()`); await delay();
     assert.equal(await run(`document.getElementById('workspace-preview-overlay').hidden`),false);
+    assert.match(await run(`document.getElementById('workspace-preview-content').textContent`), /Local preview\./);
+    assert.ok(await run(`document.querySelectorAll('.work-operation-result').length`) >= 1);
     await capture('file-preview');
     await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await delay();
     assert.equal(await run(`document.getElementById('workspace-preview-overlay').hidden`),true);
@@ -144,6 +198,19 @@ if (!process.versions.electron) {
       await run(`document.getElementById('${button}').click()`); await delay();
       assert.equal(await run(`document.getElementById('${overlay}').contains(document.activeElement)`),true,overlay);
       assert.equal(await run(`document.documentElement.dataset.maiTheme`),'dark');
+      if (overlay === 'moments-overlay') {
+        assert.equal(await run(`document.querySelector('.moment-comment--assistant span')?.textContent`),'当然买了，不过要看你什么时候来陪我一起吃。你今晚有空吗？');
+        assert.equal(await run(`document.getElementById('moments-list').textContent.includes('"action"')`),false);
+      }
+      if (overlay === 'shared-life-overlay') {
+        for (const selector of ['#timeline-list .hub-item','#people-list .hub-item','#digests-list .hub-item','#projects-list .hub-item','#habits-list .hub-item','#review-list .hub-item','.episode-item','.topic-item']) {
+          assert.equal(await run(`document.querySelectorAll(${JSON.stringify(selector)}).length`),1,selector);
+        }
+        assert.equal(await run(`document.querySelectorAll('.memory-correction-actions button').length`),4);
+        assert.equal(await run(`!document.getElementById('projects-panel').classList.contains('shared-life-panel--hidden')`),true);
+        await run(`document.getElementById('timeline-tab').click()`);
+        assert.equal(await run(`!!document.getElementById('world-activity').textContent && !document.getElementById('timeline-panel').classList.contains('shared-life-panel--hidden')`),true);
+      }
       await capture(`${overlay}-dark`);
       await run(`document.getElementById('${close}').click()`); await delay();
     }
@@ -162,8 +229,26 @@ if (!process.versions.electron) {
     await run(`window.maiAppearance.apply({theme:'light',motion:'full'})`);
     assert.equal(await run(`getComputedStyle(document.querySelector('.message--new')).animationName`),'none');
     window.webContents.debugger.detach();
+    // Presentation fixture only: no microphone, speech engine or real call is started.
+    await run(`document.getElementById('voice-call-overlay').classList.remove('overlay--hidden'); document.getElementById('voice-call-status').textContent='语音界面测试';`); await delay();
+    assert.equal(await run(`document.getElementById('voice-call-overlay').contains(document.activeElement) && getComputedStyle(document.getElementById('voice-call-overlay')).display !== 'none'`),true);
+    await capture('voice-presentation');
+    await run(`document.getElementById('end-voice-call').click()`); await delay();
+    // Preserve the standalone windows previously covered by smoke-light-theme-ui.
+    for (const [page,width,height,selector] of [['assistant',1180,820,'.feature-card'],['timer',520,700,'.countdown-card']]) {
+      const auxiliary = new BrowserWindow({width,height,useContentSize:true,show:false,webPreferences:{preload:path.join(__dirname,'mock-preload.js'),contextIsolation:true,sandbox:true,backgroundThrottling:false}});
+      auxiliary.webContents.on('console-message', (_e,level,message) => { if(level>=3) errors.push(message); });
+      auxiliary.showInactive();
+      await auxiliary.loadFile(path.join(__dirname, `../renderer/${page}.html`)); await delay(600);
+      const visible = await auxiliary.webContents.executeJavaScript(`(() => { const el=document.querySelector(${JSON.stringify(selector)}); return !!el && el.getBoundingClientRect().width>0 && document.documentElement.scrollWidth<=innerWidth; })()`);
+      assert.equal(visible,true,page);
+      const file=path.join(output,`${page}.png`); fs.writeFileSync(file,(await auxiliary.webContents.capturePage()).toPNG()); screenshots.push(file);
+      auxiliary.destroy();
+    }
     assert.deepEqual(errors, []);
-    const report = { ok:true, userDataIsolated:true, checks, contrast, screenshots, longHistory:500, focusAndRapidToggle:true, reducedMotion:true, errors };
+    const report = { ok:true, userDataIsolated:true, checks, contrast, screenshots, longHistory:500, focusAndRapidToggle:true, reducedMotion:true,
+      settingsCategories:true, draftAcrossCategoriesAndReopen:true, saveFailureRetainsDraft:true, savedFixtureVerified:true,
+      appearancePreviewReverted:true, saveFooterVisible:true, narrowNavigation:true, firstConnectionEntry:true, failedChatDraftRecovered:true, errors };
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));
     console.log(JSON.stringify(report));
     window.destroy(); app.exit(0);

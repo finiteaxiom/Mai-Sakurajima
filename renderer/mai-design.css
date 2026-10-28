@@ -2,11 +2,11 @@
    Legacy --ui/--codex aliases keep existing feature dialogs on the same palette. */
 :root {
   color-scheme: light;
-  --mai-bg-primary: #F3F2F5;
+  --mai-bg-primary: #F0EFED;
   --mai-bg-secondary: #FAF9F7;
   --mai-surface: #FFFFFF;
   --mai-surface-hover: #EEEAF2;
-  --mai-surface-active: #E8E1F3;
+  --mai-surface-active: #EAE4F1;
   --mai-text-primary: #292733;
   --mai-text-secondary: #625F6F;
   --mai-text-muted: #696575;
@@ -14,17 +14,17 @@
   --mai-border: #E6E2E8;
   --mai-border-subtle: #E6E2E8;
   --mai-control-border: #8D8798;
-  --mai-accent: #75629B;
+  --mai-accent: #70578E;
   --mai-accent-hover: #614E85;
   --mai-on-accent: #FFFFFF;
   --mai-success: #287C59;
   --mai-danger: #B33E55;
-  --mai-user-surface: #F2E2EA;
-  --mai-user-text: #46323E;
-  --mai-sidebar-surface: #F3F2F5;
+  --mai-user-surface: #EEE9F2;
+  --mai-user-text: #302D35;
+  --mai-sidebar-surface: #F0EFED;
   --mai-main-surface: #FAF9F7;
   --mai-floating-surface: #FFFFFF;
-  --mai-interactive-surface: #F3F2F5;
+  --mai-interactive-surface: #F0EFED;
   --mai-wallpaper-overlay: rgba(243,242,245,.28);
   --mai-radius-small: 10px;
   --mai-radius-medium: 16px;
@@ -43,28 +43,28 @@
 }
 :root[data-mai-theme="dark"] {
   color-scheme: dark;
-  --mai-bg-primary: #222029; --mai-bg-secondary: #25232B;
-  --mai-surface: #302D38; --mai-surface-hover: #3D3749; --mai-surface-active: #453955;
+  --mai-bg-primary: #222029; --mai-bg-secondary: #211F25;
+  --mai-surface: #2A2730; --mai-surface-hover: #3D3749; --mai-surface-active: #453955;
   --mai-text-primary: #F3EFF7; --mai-text-secondary: #C8C1D2; --mai-text-muted: #BAB2C5;
   --mai-text-disabled: #958B9F; --mai-border: #4D4659; --mai-border-subtle: #4D4659;
   --mai-control-border: #9B90AD; --mai-accent: #C8B4E8; --mai-accent-hover: #D9C8F3;
   --mai-on-accent: #292333; --mai-success: #88D5AF; --mai-danger: #F29BAD;
-  --mai-user-surface: #513E4D; --mai-user-text: #F8E5F0;
-  --mai-sidebar-surface: #292630; --mai-main-surface: #25232B; --mai-floating-surface: #302D38;
+  --mai-user-surface: #3B3345; --mai-user-text: #EDE9F0;
+  --mai-sidebar-surface: #1B191F; --mai-main-surface: #211F25; --mai-floating-surface: #2A2730;
   --mai-interactive-surface: #39343F; --mai-wallpaper-overlay: rgba(20,17,25,.55);
   --mai-glass-shadow: 0 8px 28px rgba(0,0,0,.22);
 }
 @media (prefers-color-scheme: dark) {
 :root[data-mai-theme="auto"] {
   color-scheme: dark;
-  --mai-bg-primary: #222029; --mai-bg-secondary: #25232B;
-  --mai-surface: #302D38; --mai-surface-hover: #3D3749; --mai-surface-active: #453955;
+  --mai-bg-primary: #222029; --mai-bg-secondary: #211F25;
+  --mai-surface: #2A2730; --mai-surface-hover: #3D3749; --mai-surface-active: #453955;
   --mai-text-primary: #F3EFF7; --mai-text-secondary: #C8C1D2; --mai-text-muted: #BAB2C5;
   --mai-text-disabled: #958B9F; --mai-border: #4D4659; --mai-border-subtle: #4D4659;
   --mai-control-border: #9B90AD; --mai-accent: #C8B4E8; --mai-accent-hover: #D9C8F3;
   --mai-on-accent: #292333; --mai-success: #88D5AF; --mai-danger: #F29BAD;
-  --mai-user-surface: #513E4D; --mai-user-text: #F8E5F0;
-  --mai-sidebar-surface: #292630; --mai-main-surface: #25232B; --mai-floating-surface: #302D38;
+  --mai-user-surface: #3B3345; --mai-user-text: #EDE9F0;
+  --mai-sidebar-surface: #1B191F; --mai-main-surface: #211F25; --mai-floating-surface: #2A2730;
   --mai-interactive-surface: #39343F; --mai-wallpaper-overlay: rgba(20,17,25,.55);
   --mai-glass-shadow: 0 8px 28px rgba(0,0,0,.22);
 }
@@ -142,6 +142,10 @@
 .ui-chat #message-input { font-size: calc(15px * var(--mai-ui-scale)); color: var(--mai-text-primary); background: transparent; }
 .ui-chat #message-input::placeholder { color: var(--mai-text-muted); opacity: 1; }
 .ui-chat .voice-input-button { width: 36px; height: 36px; color: var(--mai-text-secondary); }
+.ui-chat .sidebar-tools { grid-template-columns: 1fr; }
+.ui-chat .user-avatar-setting { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.ui-chat .user-avatar-setting img { display: block; width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.ui-chat .user-avatar-setting small { display: block; color: var(--mai-text-secondary); font-size: 12px; }
 .ui-chat .send-button, .ui-chat .button--primary, .ui-chat .input-dialog-button--primary, .ui-chat .moment-reply-button { color: var(--mai-on-accent); background: var(--mai-accent); border: 1px solid transparent; box-shadow: none; }
 .ui-chat .send-button:hover, .ui-chat .button--primary:hover, .ui-chat .input-dialog-button--primary:hover { background: var(--mai-accent-hover); }
 .ui-chat .send-button { min-width: 58px; height: 42px; border-radius: 16px; font-size: 14px; }

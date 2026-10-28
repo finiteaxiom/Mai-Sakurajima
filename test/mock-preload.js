@@ -172,8 +172,28 @@ function mockWorkspaceListing(request = {}) {
     { name: 'image.png', relativePath: 'image.png', type: 'file', extension: '.png', size: 60, modifiedAt: now, readable: false }
   ] };
 }
+let failNextConfigSave = false;
+let failNextChat = false;
+contextBridge.exposeInMainWorld('maiUiTest', {
+  failNextSave: () => { failNextConfigSave = true; },
+  failNextChat: () => { failNextChat = true; },
+  savedConfig: () => ({ ...mockConfig })
+});
 contextBridge.exposeInMainWorld('maiPet', {
+  getAssistantState: async () => ({ settings: {}, lifeItems: [], promises: [] }),
+  getKnowledgeState: async () => ({ libraries: [], documents: [], stats: {} }),
+  onAssistantStateUpdated: () => () => {},
+  onKnowledgeStateUpdated: () => () => {},
+  onAssistantSelectTab: () => () => {},
+  getTimerState: async () => ({ active: false, remainingMs: 0, label: '番茄钟', mode: 'study' }),
+  onTimerState: () => () => {},
   getChatConfig: async () => ({ ...mockConfig }),
+  saveChatConfig: async (payload) => {
+    if (failNextConfigSave) { failNextConfigSave = false; throw new Error('fixture: settings save failed'); }
+    const { apiKey, ...publicFields } = payload;
+    Object.assign(mockConfig, publicFields);
+    return { ...mockConfig };
+  },
   setWallpaper: async (wallpaper) => ({ ...mockConfig, wallpaper }),
   chooseCustomWallpaper: async () => ({ ...mockConfig }),
   clearCustomWallpaper: async () => ({ ...mockConfig, wallpaper: 'none', wallpapers: [] }),
@@ -261,10 +281,13 @@ contextBridge.exposeInMainWorld('maiPet', {
     ok: true,
     execution: { contextId: 'preview-context', operation: request.operation, result: { relativePath: request.relativePath, entries: [], truncated: false } }
   }),
-  sendChat: async (input) => ({
+  sendChat: async (input) => {
+    if (failNextChat) { failNextChat = false; throw new Error('fixture: network unavailable'); }
+    return ({
     content: input?.workspaceContextId ? '我已经根据这次授权的 Workspace 内容回答你。' : '我在。',
     action: 'wave', emotion: 'happy', createdAt: now, sessionId: 'preview', sessions: []
-  }),
+    });
+  },
   getMomentsState: async () => momentsState,
   getVoiceCapabilities: async () => ({
     available: true,

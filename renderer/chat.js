@@ -1832,6 +1832,7 @@ function hideNotice() {
 }
 
 function populateSettings() {
+  window.maiSettingsView?.clean();
   apiKeyInput.value = '';
   modelProviderSelect.value = chatConfig.provider || 'deepseek';
   const activeProvider = Array.isArray(chatConfig.providers)
@@ -1909,21 +1910,26 @@ function updateAppearancePreview() {
   window.maiAppearance?.apply(appearance);
 }
 
-function openSettings() {
+function openSettings(section) {
   endVoiceCall();
   memoryOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
   sharedLifeOverlay.classList.add('overlay--hidden');
   momentsOverlay.classList.add('overlay--hidden');
   closeHistory();
-  populateSettings();
+  if (!window.maiSettingsView?.isDirty()) populateSettings();
+  else updateAppearancePreview();
   setSettingsStatus('');
+  window.maiSettingsView?.open(typeof section === 'string' ? section : !chatConfig.configured ? 'model' : undefined);
   settingsOverlay.classList.remove('overlay--hidden');
-  setTimeout(() => apiKeyInput.focus(), 50);
+  setTimeout(() => {
+    if (!settingsOverlay.classList.contains('overlay--hidden')) window.maiSettingsView?.focus();
+  }, 50);
 }
 
 function closeSettings() {
   settingsOverlay.classList.add('overlay--hidden');
+  window.maiAppearance?.apply(chatConfig.appearance);
   messageInput.focus();
 }
 
@@ -3467,13 +3473,23 @@ function showWelcomeMessage() {
   mark.className = 'runtime-welcome__mark';
   mark.textContent = 'M';
   const title = document.createElement('h2');
-  title.textContent = '今天想和麻衣聊些什么？';
+  title.textContent = chatConfig.configured ? '今天，想聊些什么？' : '让我们的第一段对话开始';
   const description = document.createElement('p');
-  description.textContent = '这里是只属于你和麻衣的聊天空间。陪伴、语音、朋友圈与长期记忆都在这里。';
+  description.textContent = chatConfig.configured
+    ? '不必想好开场白，从此刻的心情开始就好。'
+    : '先连接模型。对话保存在本机，回复所需上下文会发送至你选择的模型服务。';
   const suggestions = document.createElement('div');
   suggestions.className = 'runtime-welcome__suggestions';
+  if (!chatConfig.configured) {
+    const connect = document.createElement('button');
+    connect.type = 'button';
+    connect.id = 'welcome-connect-model';
+    connect.textContent = '连接模型';
+    connect.addEventListener('click', () => openSettings('model'));
+    suggestions.appendChild(connect);
+  }
   const prompts = ['今天发生了一件事，想先告诉你', '陪我安静地聊一会儿', '帮我记住一个重要的约定'];
-  for (const prompt of prompts) {
+  for (const prompt of chatConfig.configured ? prompts : []) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = prompt;
@@ -3658,7 +3674,17 @@ async function sendMessage(options = {}) {
       renderCompanionWorkspace();
     },
     onError: (error, currentTurn) => {
-      if (currentTurn.isCurrent()) showNotice(errorText(error));
+      if (!currentTurn.isCurrent()) return;
+      showNotice(errorText(error));
+      // Keep the user's draft available. Retrying is an explicit edit/send, never an automatic request.
+      if (!messageInput.value.trim()) messageInput.value = content;
+      resizeInput();
+      const recover = document.createElement('button');
+      recover.type = 'button';
+      recover.className = 'notice-recover';
+      recover.textContent = '编辑后重试';
+      recover.addEventListener('click', () => messageInput.focus());
+      notice.appendChild(recover);
     }
   });
 }
@@ -3736,7 +3762,9 @@ async function clearApiKey() {
   try {
     const config = await api.clearApiKey();
     setConnection(config);
-    populateSettings();
+    apiKeyInput.value = '';
+    keyHint.textContent = 'Key 会使用 Windows 系统加密并仅保存在本机。';
+    if (window.maiSettingsView?.isDirty()) updateAppearancePreview();
     setSettingsStatus('本机保存的 API Key 已清除。');
   } catch (error) {
     setSettingsStatus(errorText(error), true);
@@ -4877,7 +4905,27 @@ voiceCallButton.addEventListener('click', startVoiceCall);
 voiceInputButton.addEventListener('click', startVoiceInput);
 historyButton.addEventListener('click', openHistory);
 workspaceSearchButton.addEventListener('click', openHistory);
-workspaceSidebarToggle.addEventListener('click', () => { const collapsed = chatApp.classList.toggle('sidebar-collapsed'); localStorage.setItem('mai-companion-sidebar-collapsed', collapsed ? '1' : '0'); });
+workspaceSidebarToggle.addEventListener('click', () => {
+  if (matchMedia('(max-width: 780px)').matches) {
+    workspaceSidebarToggle.setAttribute('aria-expanded', String(chatApp.classList.toggle('small-sidebar-open')));
+    return;
+  }
+  const collapsed = chatApp.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('mai-companion-sidebar-collapsed', collapsed ? '1' : '0');
+});
+document.querySelector('.chat-header').addEventListener('click', (event) => {
+  if (event.target.closest('button') && chatApp.classList.contains('small-sidebar-open')) {
+    chatApp.classList.remove('small-sidebar-open');
+    workspaceSidebarToggle.setAttribute('aria-expanded', 'false');
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && chatApp.classList.contains('small-sidebar-open')) {
+    chatApp.classList.remove('small-sidebar-open');
+    workspaceSidebarToggle.setAttribute('aria-expanded', 'false');
+    workspaceSidebarToggle.focus();
+  }
+});
 contextOpenPlans.addEventListener('click', async () => { await openSharedLife(); selectSharedLifeTab('projects'); });
 contextOpenSchedule.addEventListener('click', openLife);
 openCompanionCenterButton.addEventListener('click', () => api.openAssistant('today'));
@@ -5072,3 +5120,19 @@ api.onChatProactiveGreeting(async (payload) => {
     // The delivered message is still visible even if refreshing the sidebar fails.
   }
 });
+
+// Discard only the presentation draft; saved settings remain Main-owned.
+document.getElementById('discard-settings').addEventListener('click', () => {
+  populateSettings();
+  setSettingsStatus('已还原为保存的设置。');
+});
+
+// Other feature entries can close Settings too; a temporary preview must not leak out.
+let settingsWasVisible = false;
+const settingsVisibilityObserver = new MutationObserver(() => {
+  const visible = !settingsOverlay.classList.contains('overlay--hidden');
+  if (settingsWasVisible && !visible) window.maiAppearance?.apply(chatConfig.appearance);
+  settingsWasVisible = visible;
+});
+settingsVisibilityObserver.observe(settingsOverlay, { attributes: true, attributeFilter: ['class'] });
+window.addEventListener('pagehide', () => settingsVisibilityObserver.disconnect(), { once: true });
