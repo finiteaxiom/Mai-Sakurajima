@@ -1,0 +1,19 @@
+ M README.md
+ D docs/AGENT-HARNESS-AUDIT-v7.md
+ M docs/AVATARS.md
+ M docs/MIGRATION-v6.md
+ D docs/REFACTOR-AUDIT-v6.md
+ M docs/WALLPAPERS.md
+ M package.json
+ M test/renderer-codex-ui.test.js
+ D test/smoke-light-theme-ui.js
+ D test/smoke-local-voice-ui.js
+ D test/smoke-moments-ui.js
+ D test/smoke-shared-life-ui.js
+ D test/smoke-voice-ui.js
+?? artifacts/
+?? docs/UI-MATURITY-EXECUTION-PLAN.md
+?? docs/archive/
+?? logs/
+?? manual_build/
+?? test/README.md

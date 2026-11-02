@@ -1,0 +1,247 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "connect"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "waiting"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "cancelling"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "cancelled"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "failed"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "partial"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "saving"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "save-failed"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "saved"
+    },
+    {
+      "theme": "light",
+      "width": 1180,
+      "height": 820,
+      "scene": "empty"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "connect"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "waiting"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "cancelling"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "cancelled"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "failed"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "partial"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "saving"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "save-failed"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "saved"
+    },
+    {
+      "theme": "light",
+      "width": 760,
+      "height": 680,
+      "scene": "empty"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "connect"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "waiting"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "cancelling"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "cancelled"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "failed"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "partial"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "saving"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "save-failed"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "saved"
+    },
+    {
+      "theme": "dark",
+      "width": 1180,
+      "height": 820,
+      "scene": "empty"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "connect"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "waiting"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "cancelling"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "cancelled"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "failed"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "partial"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "saving"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "save-failed"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "saved"
+    },
+    {
+      "theme": "dark",
+      "width": 760,
+      "height": 680,
+      "scene": "empty"
+    }
+  ],
+  "errors": [],
+  "interactions": true
+}

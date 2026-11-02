@@ -1,0 +1,27 @@
+✔ the Chat page loads the scoped turn coordinator before chat.js (1.9358ms)
+✔ a voice reply completing after same-session replacement cannot overwrite the current Chat view (5.892ms)
+✔ stopping a Renderer Chat turn uses coordinator confirmation and restores controls (1.8332ms)
+✔ hanging up a voice call cancels its pending Main-owned Chat turn (2.702ms)
+✔ late auto-read failures use the captured view identity after the turn releases the composer (2.637ms)
+✔ switching sessions before a signal-ignoring fake provider returns cleans the old view and blocks late deltas (9.0835ms)
+✔ switching while stream.done is pending preserves the committed old session and never projects into the new one (13.5964ms)
+✔ confirmed stop removes old optimistic context before resend and an abort-ignoring failure cannot finish the new turn (4.6453ms)
+✔ session switch invalidates a pending cancellation acknowledgement without restoring old controls (3.9691ms)
+✔ hangup and redial isolate generations, streams, and late replies (4.3749ms)
+✔ dispose is idempotent and late cancel, state, reply, and stream completions cannot write the view (3.7563ms)
+✔ same-session full hydration invalidates an active view turn and blocks its late provider reply (2.9509ms)
+✔ same-session hydration while stream completion is pending keeps the persisted reply exactly once (4.4363ms)
+✔ a late same-session getChatState completion cannot replace a newer full hydration (3.5806ms)
+✔ a cancel refresh that hydrates another Main session settles its operation and isolates the old reply (5.9146ms)
+✔ cancel IPC failure remains visible and lets the original Main request finish as text (3.6731ms)
+✔ a late cancel IPC failure after a session switch is silent and cannot revive the old turn (3.6543ms)
+✔ metadata-only greeting refresh cannot rehydrate over a newer Chat or Voice turn (3.8608ms)
+✔ stale and disposed turn handles fail closed before invoking send (2.1453ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 163.9457

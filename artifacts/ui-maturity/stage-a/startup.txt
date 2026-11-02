@@ -1,0 +1,10 @@
+
+PASS startup ended: 3182ms
+PASS startup skip: 130ms
+PASS startup escape: 107ms
+PASS startup error: 123ms
+PASS startup timeout: 8030ms
+PASS startup missing-page: 73ms
+Screenshot: C:\Users\Felix\AppData\Local\Temp\mai-startup-smoke-wIGa1E\startup.png
+(node:8400) electron: Failed to load URL: file:///C:/Users/Felix/AppData/Local/Temp/mai-startup-smoke-wIGa1E/renderer/startup.html with error: ERR_FILE_NOT_FOUND
+(Use `electron --trace-warnings ...` to show where the warning was created)
