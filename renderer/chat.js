@@ -1822,8 +1822,9 @@ function setSettingsStatus(message, isError = false) {
   settingsStatus.classList.toggle('settings-status--error', isError);
 }
 
-function showNotice(message) {
+function showNotice(message, isError = false) {
   notice.textContent = message;
+  notice.classList.toggle('notice--error', isError);
   notice.classList.remove('notice--hidden');
 }
 
@@ -1917,9 +1918,11 @@ function openSettings(section) {
   sharedLifeOverlay.classList.add('overlay--hidden');
   momentsOverlay.classList.add('overlay--hidden');
   closeHistory();
-  if (!window.maiSettingsView?.isDirty()) populateSettings();
-  else updateAppearancePreview();
-  setSettingsStatus('');
+  if (!window.maiSettingsView?.isBusy()) {
+    if (!window.maiSettingsView?.isDirty()) populateSettings();
+    else updateAppearancePreview();
+    setSettingsStatus('');
+  }
   window.maiSettingsView?.open(typeof section === 'string' ? section : !chatConfig.configured ? 'model' : undefined);
   settingsOverlay.classList.remove('overlay--hidden');
   setTimeout(() => {
@@ -2325,7 +2328,7 @@ async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
       return chatTurnCoordinator.runTurn(turn, {
         send: async () => { throw error; },
         onError: (failure, currentTurn) => {
-          if (currentTurn.isCurrent()) addVoiceCallLine('system', errorText(failure));
+          if (currentTurn.isCurrent()) addVoiceCallLine('system', '语音播放未能开始，请检查语音设置或查看诊断。');
         }
       });
     }
@@ -2356,7 +2359,7 @@ async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
       return result;
     },
     onError: (error, currentTurn) => {
-      if (currentTurn.isCurrent()) addVoiceCallLine('system', errorText(error));
+      if (currentTurn.isCurrent()) addVoiceCallLine('system', '本次语音回复未完成，已播放的片段不代表完整回复。请稍后再试，或在设置中查看诊断。');
     }
   });
 }
@@ -3507,6 +3510,8 @@ function showWelcomeMessage() {
 function addPendingMessage() {
   const article = document.createElement('article');
   article.className = 'message message--assistant message--pending';
+  article.setAttribute('role', 'status');
+  article.setAttribute('aria-label', '正在等待回复，可点击停止');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   for (let index = 0; index < 3; index += 1) {
@@ -3588,7 +3593,16 @@ function removeOptimisticMessage(targetConversation, message) {
 }
 
 async function cancelChatUiTurn() {
-  await chatTurnCoordinator.cancelCurrentTurn({ onError: (error) => showNotice(errorText(error)) });
+  const view = chatTurnCoordinator.getState();
+  if (!view.activeTurnToken || view.cancellationPending) return;
+  const result = await chatTurnCoordinator.cancelCurrentTurn({
+    onError: () => showChatFeedback('暂时无法确认停止，请等待当前回复或稍后再试。', false)
+  });
+  const current = chatTurnCoordinator.getState();
+  if (current.disposed || current.sessionId !== view.sessionId || current.turnSequence !== view.turnSequence || result?.stale || result?.error) return;
+  showNotice(result?.cancelled === true
+    ? '本次回复已停止。你可以重新输入，继续聊天。'
+    : '当前回复已结束，已更新对话记录。');
 }
 
 async function sendMessage(options = {}) {
@@ -3596,8 +3610,8 @@ async function sendMessage(options = {}) {
   const content = String(options.content ?? messageInput.value).trim();
   if (!content || chatTurnCoordinator.getState().busy) return;
   if (!chatConfig.configured) {
-    showNotice('请先设置 DeepSeek API Key。');
-    openSettings();
+    showNotice('先连接模型，再开始聊天。你的输入仍保留在聊天框中。');
+    openSettings('model');
     return;
   }
 
@@ -3675,89 +3689,83 @@ async function sendMessage(options = {}) {
     },
     onError: (error, currentTurn) => {
       if (!currentTurn.isCurrent()) return;
-      showNotice(errorText(error));
+      showChatFeedback('本次回复未完成。请检查模型连接或稍后重试；输入已保留。');
       // Keep the user's draft available. Retrying is an explicit edit/send, never an automatic request.
       if (!messageInput.value.trim()) messageInput.value = content;
       resizeInput();
-      const recover = document.createElement('button');
-      recover.type = 'button';
-      recover.className = 'notice-recover';
-      recover.textContent = '编辑后重试';
-      recover.addEventListener('click', () => messageInput.focus());
-      notice.appendChild(recover);
+      messageInput.focus();
     }
   });
 }
 
 async function saveSettings() {
-  saveSettingsButton.disabled = true;
-  setSettingsStatus('正在保存…');
+  return submitSettings();
+}
+
+function feedbackAction(container, label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'notice-recover';
+  button.textContent = label;
+  button.addEventListener('click', action);
+  container.appendChild(button);
+}
+
+function showChatFeedback(message, editable = true) {
+  showNotice(message, true);
+  if (editable) feedbackAction(notice, '编辑后重试', () => messageInput.focus());
+  feedbackAction(notice, '模型连接', () => openSettings('model'));
+  feedbackAction(notice, '查看诊断', () => openSettings('diagnostics'));
+}
+
+async function submitSettings(afterSave, successMessage = '设置已保存。') {
+  if (window.maiSettingsView.isBusy()) return;
+  window.maiSettingsView.setBusy(true);
+  setSettingsStatus('正在保存，请稍候…');
+  let saved = false;
   try {
     const config = await api.saveChatConfig(configPayload());
+    saved = true;
     setConnection(config);
     populateSettings();
-    setSettingsStatus('设置已保存。');
+    // A save finishing after the dialog closes must not revive an appearance preview.
+    if (settingsOverlay.classList.contains('overlay--hidden')) window.maiAppearance?.apply(chatConfig.appearance);
+    if (afterSave) {
+      setSettingsStatus('设置已保存，正在执行操作…');
+      await afterSave();
+    }
+    setSettingsStatus(config.credentialStorageWarning || successMessage, Boolean(config.credentialStorageWarning));
     hideNotice();
-    refreshLifeState();
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
+    if (messagesElement.querySelector('.runtime-welcome--chat')) showWelcomeMessage();
+    if (!afterSave) refreshLifeState();
+  } catch {
+    setSettingsStatus(saved
+      ? '设置已保存，但后续操作未完成。请检查模型连接或稍后重试。'
+      : '设置未保存。输入仍保留在本窗口，请稍后重试或查看诊断。', true);
+    feedbackAction(settingsStatus, '查看诊断', () => window.maiSettingsView.select('diagnostics', true));
   } finally {
-    saveSettingsButton.disabled = false;
+    window.maiSettingsView.setBusy(false);
   }
 }
 
 async function testConnection() {
-  testConnectionButton.disabled = true;
-  setSettingsStatus('正在连接 DeepSeek…');
-  try {
-    const config = await api.saveChatConfig(configPayload());
-    setConnection(config);
-    populateSettings();
-    await api.testChatConnection();
-    setSettingsStatus('连接成功，麻衣已经可以和你聊天了。');
-    hideNotice();
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
-  } finally {
-    testConnectionButton.disabled = false;
-  }
+  return submitSettings(() => api.testChatConnection(), '连接成功，现在可以返回聊天。');
 }
 
 async function previewGreeting() {
-  previewGreetingButton.disabled = true;
-  try {
-    const config = await api.saveChatConfig(configPayload());
-    setConnection(config);
-    populateSettings();
-    const greeting = await api.sendProactiveGreeting();
-    setMood(greeting);
-    setSettingsStatus('已主动发起一个新话题。');
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
-  } finally {
-    previewGreetingButton.disabled = false;
-  }
+  return submitSettings(async () => { setMood(await api.sendProactiveGreeting()); }, '设置已保存，已主动发起一个新话题。');
 }
 
 async function previewGirlfriendMessage() {
-  previewGirlfriendButton.disabled = true;
-  try {
-    const config = await api.saveChatConfig(configPayload());
-    setConnection(config);
-    populateSettings();
+  return submitSettings(async () => {
     const message = await api.sendGirlfriendMessage();
-    if (message) {
-      setMood(message);
-    }
-    setSettingsStatus('已发送一条女友模式主动消息。');
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
-  } finally {
-    previewGirlfriendButton.disabled = !girlfriendEnabledInput.checked;
-  }
+    if (message) setMood(message);
+  }, '设置已保存，已完成女友消息请求。');
 }
 
 async function clearApiKey() {
+  if (window.maiSettingsView.isBusy()) return;
+  window.maiSettingsView.setBusy(true);
   clearKeyButton.disabled = true;
   try {
     const config = await api.clearApiKey();
@@ -3770,6 +3778,7 @@ async function clearApiKey() {
     setSettingsStatus(errorText(error), true);
   } finally {
     clearKeyButton.disabled = !chatConfig.configured;
+    window.maiSettingsView.setBusy(false);
   }
 }
 
@@ -5123,6 +5132,7 @@ api.onChatProactiveGreeting(async (payload) => {
 
 // Discard only the presentation draft; saved settings remain Main-owned.
 document.getElementById('discard-settings').addEventListener('click', () => {
+  if (window.maiSettingsView.isBusy()) return;
   populateSettings();
   setSettingsStatus('已还原为保存的设置。');
 });
@@ -5136,3 +5146,6 @@ const settingsVisibilityObserver = new MutationObserver(() => {
 });
 settingsVisibilityObserver.observe(settingsOverlay, { attributes: true, attributeFilter: ['class'] });
 window.addEventListener('pagehide', () => settingsVisibilityObserver.disconnect(), { once: true });
+
+document.getElementById('empty-life-add').addEventListener('click', () => lifeTitleInput.focus());
+document.getElementById('empty-memory-add').addEventListener('click', () => memoryTextInput.focus());

@@ -605,7 +605,7 @@ spriteSheet.src = '../assets/spritesheet-original.png';
 desktopApi.getSettings().then((settings) => {
   userReducedOutfitMotion = ['off', 'reduced'].includes(settings.appearance?.motion);
   if (settings.firstLaunch) {
-    showSpeech('以后我会经常来找你。右键可以设置番茄钟，还藏着一个“不可见”的秘密。', 8200);
+    showSpeech('我在这里，学弟。双击我就能打开聊天；第一次使用，先在聊天页连接模型。', 8200);
   }
   scheduleAutonomy(settings.firstLaunch ? 13000 : 8000);
 });

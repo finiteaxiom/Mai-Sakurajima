@@ -94,3 +94,11 @@
   .ui-chat .settings-content { grid-column: 1; grid-row: 3; padding: 20px; }
   .ui-chat .settings-footer { grid-column: 1; grid-row: 4; }
 }
+
+/* Submission locking leaves navigation, close and independent resource actions usable. */
+.ui-chat #settings-overlay [inert] { opacity: .65; }
+.ui-chat #settings-status .notice-recover { margin-left: 8px; color: var(--mai-text-primary); background: var(--mai-surface); border: 1px solid var(--mai-border); border-radius: 6px; padding: 3px 8px; }
+.ui-chat .empty-action { display: block; margin-top: 8px; }
+.ui-chat .notice { color: var(--mai-text-primary); background: var(--mai-surface); border-color: var(--mai-border); }
+.ui-chat .notice--error { color: var(--mai-danger); background: color-mix(in srgb, var(--mai-danger) 6%, var(--mai-main-surface)); border-color: color-mix(in srgb, var(--mai-danger) 45%, var(--mai-border)); }
+.ui-chat .settings-status--error { color: var(--mai-danger); }

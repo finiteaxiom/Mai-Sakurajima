@@ -42,6 +42,47 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
+test('a voice turn failing after deltas reports incomplete output without projecting a final reply', async () => {
+  const request = createDeferred();
+  const stream = createStream();
+  const deltas = [];
+  stream.push = delta => deltas.push(delta);
+  const rendered = [];
+  const lines = [];
+  const conversation = [];
+  let requestId;
+  const api = { sendChat: payload => { requestId = payload.requestId; return request.promise; } };
+  const coordinator = createChatTurnCoordinator({ api });
+  coordinator.applyChatState({ activeSessionId: 'voice-a', messages: [] });
+  const sandbox = {
+    api, conversation, chatTurnCoordinator: coordinator,
+    activeChatSessionId: () => coordinator.getState().sessionId,
+    voiceCallActive: true, voiceCallGeneration: 1, voiceCallSpeakerMuted: false,
+    createVoiceStreamController: () => stream,
+    addMessage(role, content) {
+      rendered.push({ role, content });
+      return { remove() {} };
+    },
+    addPendingMessage: () => ({ remove() {} }),
+    removeOptimisticMessage(target, message) { target.splice(target.indexOf(message), 1); },
+    addVoiceCallLine: (role, content) => lines.push({ role, content })
+  };
+  const send = loadRendererFunction(sandbox, 'async function sendVoiceCallTurn(', '\nasync function runVoiceCall(', 'sendVoiceCallTurn');
+  const pending = send('测试中断', 1, {});
+  assert.equal(coordinator.handleVoiceStreamDelta({ requestId, delta: '尚未完整的片段' }), true);
+  request.reject(new Error('private provider error'));
+  await pending;
+  assert.deepEqual(deltas, ['尚未完整的片段']);
+  assert.equal(stream.cancelled, true);
+  assert.equal(stream.finished, false);
+  assert.deepEqual(conversation, []);
+  assert.equal(rendered.some(message => message.role === 'assistant'), false);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0].content, /语音回复未完成/);
+  assert.doesNotMatch(lines[0].content, /private provider/);
+  assert.equal(coordinator.getState().busy, false);
+});
+
 test('the Chat page loads the scoped turn coordinator before chat.js', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'chat.html'), 'utf8');
   const coordinatorIndex = source.indexOf('<script src="chat-turn-coordinator.js"></script>');

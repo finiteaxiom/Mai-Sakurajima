@@ -40,7 +40,7 @@
     return true;
   };
   const focusable = (el) => [...el.querySelectorAll('button, a[href], input, textarea, select, [tabindex]')]
-    .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && !node.closest('[hidden]'));
+    .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && !node.closest('[hidden], [inert]'));
   const main = document.querySelector('.chat-app');
   function syncLayers() {
     const removed = stack.filter(entry => !visible(entry));

@@ -6,6 +6,19 @@
   const hint = document.getElementById('settings-draft-hint');
   let dirty = false;
   let selected = 'appearance';
+  let busy = false;
+  // Inert preserves each field's own disabled state (voice/provider dependencies).
+  // Independent resource buttons and diagnostics remain available.
+  const submissionControls = [...overlay.querySelectorAll('input, textarea, select, #save-settings, #test-connection, #preview-greeting, #preview-girlfriend, #discard-settings, #clear-key')];
+  function setBusy(value) {
+    busy = Boolean(value);
+    for (const control of submissionControls) {
+      control.inert = busy;
+      if (busy) control.setAttribute('aria-disabled', 'true');
+      else control.removeAttribute('aria-disabled');
+    }
+    document.getElementById('save-settings').textContent = busy ? '处理中…' : '保存更改';
+  }
   function select(section, focus = false) {
     if (!buttons.some(button => button.dataset.settingsSection === section)) return;
     selected = section;
@@ -38,7 +51,7 @@
   document.getElementById('preview-girlfriend').textContent = '保存并试女友消息';
   document.getElementById('save-settings').textContent = '保存更改';
   window.maiSettingsView = Object.freeze({
-    select, clean, isDirty: () => dirty,
+    select, clean, setBusy, isBusy: () => busy, isDirty: () => dirty,
     open(section) { select(section || selected); },
     focus() { buttons.find(button => button.dataset.settingsSection === selected)?.focus(); }
   });

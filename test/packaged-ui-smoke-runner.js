@@ -52,7 +52,7 @@ function runUiSmoke(output) {
   assert.equal(result.ok, true, result.error || JSON.stringify(result));
   if (verifySettingsSaveFailure) {
     assert.deepEqual(result.settingsSaveError, {
-      message: 'Smoke-injected settings replacement failure.',
+      message: '设置未保存。输入仍保留在本窗口，请稍后重试或查看诊断。查看诊断',
       errorStyle: true,
       persistedBytesUnchanged: true,
       settingsStateRolledBack: true

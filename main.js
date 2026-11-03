@@ -4661,7 +4661,7 @@ async function runUiSmoke(outputPath) {
           };
           wait();
         })`);
-        if (!settingsSaveError.message.includes('Smoke-injected settings replacement failure.')) {
+        if (!settingsSaveError.message.includes('设置未保存。') || settingsSaveError.message.includes('Smoke-injected')) {
           throw new Error(`Settings UI showed an unexpected failure: ${settingsSaveError.message}`);
         }
         settingsSaveError.persistedBytesUnchanged = fs.readFileSync(settingsPath()).equals(settingsBytesBeforeFailure);
