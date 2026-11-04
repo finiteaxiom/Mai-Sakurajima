@@ -65,6 +65,16 @@ Chat 未配置时保留输入并直达模型分类；首次桌宠欢迎词提示
 
 业务验证使用 `npm.cmd test` 的单元测试及迁移、恢复保护、P0 Chat flow。UI smoke 是源码渲染器检查，不能替代安装包、真实模型、语音硬件、多屏或不同 Windows DPI 的实际验收。每轮实际执行记录与截图应以对应报告为准，不把历史通过结果当作当前发布结论。
 
-## Process boundaries
+## 组件与周边窗口
+
+Chat、生活陪伴独立窗口与番茄钟共同使用 `mai-design.css` 的主题别名、主次按钮、危险操作、输入框、禁用与键盘焦点状态。独立窗口的主按钮文字使用 `--mai-on-accent`；资料说明与折叠编辑入口不再继承旧浅色粉色文字。页面布局仍由各自样式负责，不另建主题或设置存储。
+
+桌面宽度下折叠侧栏显示「生活」「资料」短标签，隐藏组内入口；激活短标签会展开原侧栏和对应分组，保留完整可访问名称。窄布局继续使用原有抽屉导航。
+
+生活陪伴页签以 `aria-current` 表示当前页面。资料移动弹窗打开时背景 inert，Tab / Shift+Tab 留在弹窗内，Escape 取消；关闭后隐藏弹窗 inert，取消与成功移动均恢复到对应资料操作按钮，列表重建后也能继续键盘操作。番茄钟等待开始或取消返回时锁定按钮、预设与输入，500ms 刷新不会提前解除锁定；失败保留既有计时状态。此处 pending 只表示 Renderer 请求等待，不取代 Main 的计时所有权。
+
+`node test/ui-consistency-smoke.js` 使用真实 Electron Renderer、合成 IPC、临时 APPDATA/userData，覆盖周边页面明暗主题、折叠导航、模态焦点、资料列表与移动、延迟计时和失败恢复。`MAI_CONSISTENCY_OUTPUT` 指定截图及报告目录。它不替代真实文件移动、原生审批、麦克风或系统 DPI 验收。
+
+## Runtime 边界
 
 本次视觉系统没有改变架构职责：Renderer 只处理呈现和短暂交互状态；Preload 只暴露固定 IPC；Main Process 继续拥有设置规范化、保存与任何系统能力。Chat Runtime 与 Work / Action Runtime 的数据和执行边界不变。

@@ -70,7 +70,7 @@
 }
 }
 
-.ui-chat {
+:is(.ui-chat, .ui-assistant, .ui-timer) {
   --codex-canvas: var(--mai-bg-primary); --codex-sidebar: var(--mai-sidebar-surface);
   --codex-surface: var(--mai-surface); --codex-surface-soft: var(--mai-bg-secondary);
   --codex-surface-hover: var(--mai-surface-hover); --codex-surface-selected: var(--mai-surface-active);
@@ -237,3 +237,31 @@
 @media (prefers-reduced-transparency: reduce) {
   .ui-chat .workspace-topbar, .ui-chat .chat-header, .ui-chat .composer { background: var(--mai-surface); backdrop-filter: none; }
 }
+
+/* Shared control states for companion pages; layout remains page-owned. */
+:is(.ui-chat, .ui-assistant, .ui-timer) :focus-visible { outline: 2px solid var(--mai-accent); outline-offset: 3px; }
+:is(.ui-chat, .ui-assistant, .ui-timer) :is(input, select, textarea) { accent-color: var(--mai-accent); }
+:is(.ui-chat, .ui-assistant, .ui-timer) .button--secondary { color: var(--mai-text-primary); background: var(--mai-surface); border-color: var(--mai-control-border); }
+:is(.ui-chat, .ui-assistant, .ui-timer) .button--secondary:hover:not(:disabled) { background: var(--mai-surface-hover); }
+:is(.ui-chat, .ui-assistant, .ui-timer) .button--danger { color: var(--mai-danger); background: var(--mai-surface); border-color: var(--mai-danger); }
+:is(.ui-assistant, .ui-timer) :is(.button--primary, .input-dialog-button--primary, .timer-mark) { color: var(--mai-on-accent); background: var(--mai-accent); }
+:is(.ui-assistant, .ui-timer) :is(.button--primary, .input-dialog-button--primary):hover:not(:disabled) { background: var(--mai-accent-hover); }
+:is(.ui-assistant, .ui-timer) :is(button, input, select, textarea):disabled { color: var(--mai-text-disabled); background: var(--mai-interactive-surface); border-color: var(--mai-border); cursor: not-allowed; opacity: 1; }
+:is(.ui-assistant, .ui-timer) :is(input, select, textarea):focus { border-color: var(--mai-accent); box-shadow: none; }
+:is(.ui-assistant, .ui-timer) input::placeholder, .ui-assistant textarea::placeholder { color: var(--mai-text-muted); }
+.ui-assistant { --muted: var(--mai-text-secondary); --pink-soft: var(--mai-text-secondary); --line: var(--mai-border); --good: var(--mai-success); }
+.ui-assistant .tab { color: var(--mai-text-secondary); }
+.ui-assistant .item-meta { color: var(--mai-text-secondary) !important; }
+.ui-assistant .editor-details summary { color: var(--mai-accent) !important; }
+.ui-assistant .privacy-chip { background: var(--mai-surface); border-color: var(--mai-success); }
+.ui-assistant .empty { background: var(--mai-bg-secondary); color: var(--mai-text-secondary); border-color: var(--mai-border); }
+.ui-assistant .notice.is-error, .ui-assistant .input-dialog-error, .ui-timer .notice { color: var(--mai-danger); }
+.ui-assistant .input-dialog-card { box-shadow: var(--mai-glass-shadow); }
+.ui-assistant .input-dialog-heading h2 { color: var(--mai-text-primary); }
+.ui-assistant .input-dialog-heading p, .ui-assistant #knowledge-move-description { color: var(--mai-text-secondary); }
+.ui-assistant .input-dialog-close { color: var(--mai-text-primary); background: var(--mai-surface); border-color: var(--mai-control-border); }
+.ui-assistant .input-dialog-close:hover { background: var(--mai-surface-hover); }
+.ui-timer .timer-app { background: transparent; }
+.ui-timer .presets button.is-selected { color: var(--mai-text-primary); border-color: var(--mai-accent); background: var(--mai-surface-active); box-shadow: inset 0 -2px var(--mai-accent); }
+.ui-timer { overflow-y: auto; }
+:is(.ui-assistant, .ui-timer)[data-mai-motion="off"] *, :is(.ui-assistant, .ui-timer)[data-mai-motion="reduced"] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

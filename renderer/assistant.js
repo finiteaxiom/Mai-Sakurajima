@@ -4,6 +4,7 @@ const qa = (selector) => [...document.querySelectorAll(selector)];
 let assistant = null;
 let knowledge = null;
 let knowledgeMoveResolve = null;
+let knowledgeMoveOpener = null;
 
 function errorText(error) {
   return (error?.message || String(error) || '发生了未知错误。').replace(/^Error invoking remote method '[^']+': Error:\s*/, '');
@@ -18,12 +19,18 @@ function closeKnowledgeMoveDialog(result = null) {
   const resolve = knowledgeMoveResolve;
   knowledgeMoveResolve = null;
   q('#knowledge-move-dialog').classList.add('input-dialog-overlay--hidden');
+  q('#knowledge-move-dialog').inert = true;
+  q('.app-shell').inert = false;
+  const opener = knowledgeMoveOpener;
+  setTimeout(() => { if (opener?.isConnected && q('#knowledge-move-dialog').inert) opener.focus(); }, 0);
+  knowledgeMoveOpener = null;
   q('#knowledge-move-error').textContent = '';
   if (resolve) resolve(result);
 }
 
-function chooseKnowledgeLibrary(currentLibraryId) {
+function chooseKnowledgeLibrary(currentLibraryId, opener = document.activeElement) {
   if (knowledgeMoveResolve) closeKnowledgeMoveDialog(null);
+  knowledgeMoveOpener = opener;
   const selector = q('#knowledge-move-select');
   selector.innerHTML = '';
   for (const library of knowledge?.libraries || []) {
@@ -35,7 +42,9 @@ function chooseKnowledgeLibrary(currentLibraryId) {
   selector.value = String(currentLibraryId || '');
   q('#knowledge-move-error').textContent = '';
   q('#knowledge-move-dialog').classList.remove('input-dialog-overlay--hidden');
-  requestAnimationFrame(() => selector.focus());
+  q('#knowledge-move-dialog').inert = false;
+  q('.app-shell').inert = true;
+  requestAnimationFrame(() => { if (!q('#knowledge-move-dialog').inert) selector.focus(); });
   return new Promise((resolve) => {
     knowledgeMoveResolve = resolve;
   });
@@ -66,7 +75,7 @@ function button(label, handler, danger = false) {
   node.textContent = label;
   node.addEventListener('click', async () => {
     node.disabled = true;
-    try { await handler(); } catch (error) { notice(errorText(error), true); } finally { node.disabled = false; }
+    try { await handler(node); } catch (error) { notice(errorText(error), true); } finally { node.disabled = false; }
   });
   return node;
 }
@@ -90,7 +99,11 @@ function card(title, body, meta = '') {
 
 function selectTab(tab) {
   const selected = ['today', 'calendar', 'focus', 'promises', 'usage', 'knowledge', 'settings'].includes(tab) ? tab : 'today';
-  qa('.tab').forEach((item) => item.classList.toggle('is-active', item.dataset.tab === selected));
+  qa('.tab').forEach((item) => {
+    item.classList.toggle('is-active', item.dataset.tab === selected);
+    if (item.dataset.tab === selected) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
   qa('.panel').forEach((item) => item.classList.toggle('is-hidden', item.id !== `${selected}-panel`));
   if (selected === 'knowledge') api.refreshKnowledge().catch(() => {});
 }
@@ -187,17 +200,26 @@ function renderKnowledge() {
   });
   const docs = q('#document-list'); docs.innerHTML = '';
   if (!knowledge.documents?.length) docs.appendChild(empty('还没有资料。导入 PDF、文本、笔记、课程文件或聊天记录后即可本地检索。'));
-  (knowledge.documents || []).forEach((document) => {
-    const library = knowledge.libraries.find((item) => item.id === document.libraryId);
-    const node = card(document.title, document.sourcePath || '应用内笔记', `${library?.name || '知识库'} · ${privacyLabel(library?.privacy)} · ${document.characterCount || 0} 字 · ${document.status}`);
+  (knowledge.documents || []).forEach((entry) => {
+    const library = knowledge.libraries.find((item) => item.id === entry.libraryId);
+    const node = card(entry.title, entry.sourcePath || '应用内笔记', `${library?.name || '知识库'} · ${privacyLabel(library?.privacy)} · ${entry.characterCount || 0} 字 · ${entry.status}`);
+    node.dataset.documentId = entry.id;
     const actions = document.createElement('div'); actions.className = 'item-actions';
-    actions.append(button('移动资料', async () => {
-      const destinationId = await chooseKnowledgeLibrary(document.libraryId);
-      if (!destinationId || destinationId === document.libraryId) return;
-      knowledge = await api.updateKnowledgeDocument(document.id, { libraryId: destinationId });
-      renderKnowledge();
-      notice(`“${document.title}”已经移动到新的知识库。`);
-    }), button('删除索引', async () => { if (confirm(`删除“${document.title}”的本地索引？原文件不会删除。`)) { knowledge = await api.deleteKnowledgeDocument(document.id); renderKnowledge(); } }, true));
+    actions.append(button('移动资料', async (trigger) => {
+      const destinationId = await chooseKnowledgeLibrary(entry.libraryId, trigger);
+      if (!destinationId || destinationId === entry.libraryId) return;
+      try {
+        knowledge = await api.updateKnowledgeDocument(entry.id, { libraryId: destinationId });
+        renderKnowledge();
+        notice(`“${entry.title}”已经移动到新的知识库。`);
+      } finally {
+        setTimeout(() => {
+          if (document.activeElement !== document.body && document.activeElement !== trigger) return;
+          const current = qa('#document-list .item-card').find(item => item.dataset.documentId === entry.id);
+          current?.querySelector('button')?.focus();
+        }, 0);
+      }
+    }), button('删除索引', async () => { if (confirm(`删除“${entry.title}”的本地索引？原文件不会删除。`)) { knowledge = await api.deleteKnowledgeDocument(entry.id); renderKnowledge(); } }, true));
     node.appendChild(actions); docs.appendChild(node);
   });
   q('#hero-summary').textContent = `${knowledge.summary?.documents || 0} 份资料 · ${knowledge.summary?.libraries || 0} 个隐私分库 · 本地索引`;
@@ -283,8 +305,16 @@ q('#knowledge-move-dialog').addEventListener('pointerdown', (event) => {
   if (event.target === q('#knowledge-move-dialog')) closeKnowledgeMoveDialog(null);
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !q('#knowledge-move-dialog').classList.contains('input-dialog-overlay--hidden')) {
+  const dialog = q('#knowledge-move-dialog');
+  if (dialog.inert) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
     closeKnowledgeMoveDialog(null);
+  } else if (event.key === 'Tab') {
+    const nodes = [...dialog.querySelectorAll('button, select')].filter(node => !node.disabled);
+    const index = nodes.indexOf(document.activeElement);
+    if (event.shiftKey && index <= 0) { event.preventDefault(); nodes.at(-1)?.focus(); }
+    else if (!event.shiftKey && (index < 0 || index === nodes.length - 1)) { event.preventDefault(); nodes[0]?.focus(); }
   }
 });
 

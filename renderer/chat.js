@@ -5149,3 +5149,14 @@ window.addEventListener('pagehide', () => settingsVisibilityObserver.disconnect(
 
 document.getElementById('empty-life-add').addEventListener('click', () => lifeTitleInput.focus());
 document.getElementById('empty-memory-add').addEventListener('click', () => memoryTextInput.focus());
+
+// A compact group opens the full navigation before exposing its child entries.
+document.querySelectorAll('.sidebar-group').forEach(group => {
+  group.querySelector('summary').addEventListener('click', event => {
+    if (innerWidth <= 780 || !chatApp.classList.contains('sidebar-collapsed')) return;
+    event.preventDefault();
+    workspaceSidebarToggle.click();
+    group.open = true;
+    group.querySelector('summary').focus();
+  });
+});

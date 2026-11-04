@@ -1,0 +1,3 @@
+
+(electron) 'console-message' arguments are deprecated and will be removed. Please use Event<WebContentsConsoleMessageEventParams> object instead.
+{"ok":true,"checks":68,"output":"D:/Projects/Mai-Sakurajima/artifacts/ui-maturity/stage-c/screenshots"}

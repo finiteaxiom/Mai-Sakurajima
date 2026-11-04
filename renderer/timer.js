@@ -10,6 +10,8 @@ const startButton = document.getElementById('start-button');
 const cancelButton = document.getElementById('cancel-button');
 const notice = document.getElementById('notice');
 
+let pendingOperation = '';
+
 let timerState = {
   active: false,
   endAt: 0,
@@ -35,29 +37,27 @@ function remainingTime() {
 
 function render() {
   const remaining = remainingTime();
-  if (timerState.active && remaining > 0) {
-    countdown.textContent = formatTime(remaining);
-    timerLabel.textContent = timerState.label;
-    timerStatus.textContent = '麻衣正在替你看着时间';
-    startButton.disabled = true;
-    cancelButton.disabled = false;
-    minutesInput.disabled = true;
-    labelInput.disabled = true;
-    modeInput.disabled = true;
-    return;
+  const active = timerState.active && remaining > 0;
+  const pending = Boolean(pendingOperation);
+  countdown.textContent = formatTime(active ? remaining : (Number(minutesInput.value) || 25) * 60 * 1000);
+  timerLabel.textContent = active ? timerState.label : '准备开始';
+  timerStatus.textContent = pending ? (pendingOperation === 'start' ? '正在开始计时…' : '正在取消计时…')
+    : active ? '麻衣正在替你看着时间' : timerState.endAt > 0 ? '时间到了' : '选择时长后开始';
+  startButton.disabled = active || pending;
+  cancelButton.disabled = !active || pending;
+  startButton.textContent = pendingOperation === 'start' ? '正在开始…' : '开始专注';
+  cancelButton.textContent = pendingOperation === 'cancel' ? '正在取消…' : '取消计时';
+  for (const input of [minutesInput, labelInput, modeInput]) input.disabled = active || pending;
+  for (const button of presets.querySelectorAll('button')) {
+    const selected = Number(button.dataset.minutes) === Number(minutesInput.value);
+    button.disabled = active || pending;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
   }
-
-  countdown.textContent = formatTime((Number(minutesInput.value) || 25) * 60 * 1000);
-  timerLabel.textContent = '准备开始';
-  timerStatus.textContent = timerState.endAt > 0 ? '时间到了' : '选择时长后开始';
-  startButton.disabled = false;
-  cancelButton.disabled = true;
-  minutesInput.disabled = false;
-  labelInput.disabled = false;
-  modeInput.disabled = false;
 }
 
 function selectPreset(minutes) {
+  if (pendingOperation || (timerState.active && remainingTime() > 0)) return;
   minutesInput.value = String(minutes);
   for (const button of presets.querySelectorAll('button')) {
     button.classList.toggle('is-selected', Number(button.dataset.minutes) === minutes);
@@ -83,8 +83,10 @@ minutesInput.addEventListener('input', () => {
 });
 
 startButton.addEventListener('click', async () => {
+  if (pendingOperation || (timerState.active && remainingTime() > 0)) return;
   notice.textContent = '';
-  startButton.disabled = true;
+  pendingOperation = 'start';
+  render();
   try {
     timerState = await api.startTimer({
       minutes: Number(minutesInput.value),
@@ -94,20 +96,20 @@ startButton.addEventListener('click', async () => {
     render();
   } catch (error) {
     notice.textContent = errorText(error);
-    startButton.disabled = false;
-  }
+  } finally { pendingOperation = ''; render(); }
 });
 
 cancelButton.addEventListener('click', async () => {
+  if (pendingOperation || !timerState.active) return;
   notice.textContent = '';
-  cancelButton.disabled = true;
+  pendingOperation = 'cancel';
+  render();
   try {
     timerState = await api.cancelTimer();
     render();
   } catch (error) {
     notice.textContent = errorText(error);
-    cancelButton.disabled = false;
-  }
+  } finally { pendingOperation = ''; render(); }
 });
 
 setInterval(render, 500);
