@@ -77,4 +77,6 @@ Chat、生活陪伴独立窗口与番茄钟共同使用 `mai-design.css` 的主�
 
 ## Runtime 边界
 
+头像、桌宠与衣橱按 [角色展示规范](CHARACTER-DISPLAY.md) 分别定义裁切和尺寸。衣橱的当前穿着与正在预览分开显示，错误不伪装为已保存；本地头像加载失败使用中性 SVG 回退。
+
 本次视觉系统没有改变架构职责：Renderer 只处理呈现和短暂交互状态；Preload 只暴露固定 IPC；Main Process 继续拥有设置规范化、保存与任何系统能力。Chat Runtime 与 Work / Action Runtime 的数据和执行边界不变。

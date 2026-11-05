@@ -1,0 +1,22 @@
+
+{"display":{"scaleFactor":1.5,"bounds":{"x":0,"y":0,"width":1707,"height":1067},"workArea":{"x":0,"y":0,"width":1707,"height":1019}},"contentBounds":{"x":480,"y":149,"width":746,"height":743}}
+{"outfit":"original","actions":[{"name":"idle","unique":6},{"name":"wave","unique":4},{"name":"runRight","unique":8},{"name":"runLeft","unique":8},{"name":"love","unique":4},{"name":"sleep","unique":4},{"name":"outfitPrimary","unique":6},{"name":"outfitSecondary","unique":6}],"dpr":1.5}
+{"outfit":"school","actions":[{"name":"idle","unique":4},{"name":"wave","unique":4},{"name":"runRight","unique":4},{"name":"runLeft","unique":4},{"name":"love","unique":4},{"name":"sleep","unique":4},{"name":"outfitPrimary","unique":4},{"name":"outfitSecondary","unique":4}],"dpr":1.5}
+Error occurred in handler for 'wardrobe:set': Error: fixture disk failure
+    at saveSettings (C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\test\pet-wardrobe-smoke.js:42:49)
+    at C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\pet-wardrobe.js:45:11
+    at C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\pet-wardrobe.js:19:12
+    at Session.<anonymous> (node:electron/js2c/browser_init:2:112778)
+    at Session.emit (node:events:519:28)
+Error occurred in handler for 'wardrobe:get': Error: fixture read failure
+    at getSettings (C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\test\pet-wardrobe-smoke.js:41:113)
+    at snapshot (C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\pet-wardrobe.js:16:57)
+    at C:\Users\Felix\AppData\Local\Temp\mai-stage-d-036a6e59359b452ea5e40c59f1a9284a\pet-wardrobe.js:19:12
+    at Session.<anonymous> (node:electron/js2c/browser_init:2:112778)
+    at Session.emit (node:events:519:28)
+{"outfit":"home","actions":[{"name":"idle","unique":4},{"name":"wave","unique":4},{"name":"runRight","unique":4},{"name":"runLeft","unique":4},{"name":"love","unique":4},{"name":"sleep","unique":4},{"name":"outfitPrimary","unique":4},{"name":"outfitSecondary","unique":4}],"dpr":1.5}
+{"outfit":"winter","actions":[{"name":"idle","unique":4},{"name":"wave","unique":4},{"name":"runRight","unique":4},{"name":"runLeft","unique":4},{"name":"love","unique":4},{"name":"sleep","unique":4},{"name":"outfitPrimary","unique":4},{"name":"outfitSecondary","unique":4}],"dpr":1.5}
+{"outfit":"school","walkingFootWidths":{"right":[93,25,96,26],"left":[93,25,96,26]}}
+{"outfit":"home","walkingFootWidths":{"right":[107,35,116,35],"left":[107,35,116,35]}}
+{"outfit":"winter","walkingFootWidths":{"right":[96,29,101,33],"left":[96,29,101,33]}}
+{"ok":true,"isolatedUserData":true,"nativeMenu":true,"productionIPC":true,"threeOutfits":true,"previewDoesNotSave":true,"positionStable":true,"animatedFrames":true,"dragQueue":true,"writeFailureRollback":true,"diskReload":true,"originalRestored":true,"screenshots":"D:/Projects/Mai-Sakurajima/artifacts/ui-maturity/stage-d/screenshots"}

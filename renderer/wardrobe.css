@@ -12,7 +12,9 @@ button:hover { background: var(--mai-surface-hover); }
 button:focus-visible, select:focus-visible { outline: 3px solid var(--mai-accent); outline-offset: 3px; }
 button:disabled { opacity: .55; cursor: default; }
 .preview { display: flex; justify-content: center; align-items: center; gap: 40px; padding: 14px 22px; min-height: 300px; border: 1px solid var(--mai-border); border-radius: 24px; background: radial-gradient(ellipse at 30% 70%, var(--mai-surface-active), var(--mai-surface) 70%); }
-#preview { width: 240px; height: 260px; image-rendering: pixelated; }
+#preview { width: 192px; height: 208px; flex: 0 0 192px; image-rendering: pixelated; }
+#preview[hidden] { display: block; visibility: hidden; }
+.scale-note { font-size: 12px; }
 .preview-description { max-width: 220px; }
 #current-outfit { color: var(--mai-accent); font-size: 12px; }
 .outfits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }

@@ -17,7 +17,7 @@ if (!process.versions.electron) {
     if (path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('mai-wardrobe-smoke-')) fs.rmSync(root, { recursive: true, force: true });
   }
 } else {
-  const { app, BrowserWindow, ipcMain, nativeImage, Menu, Tray } = require('electron');
+  const { app, BrowserWindow, ipcMain, nativeImage, Menu, Tray, screen } = require('electron');
   const { registerPetWardrobeIpc } = require('../pet-wardrobe');
   const { createWindowManager } = require('../window-manager');
   const root = process.env.MAI_WARDROBE_SMOKE_ROOT;
@@ -25,9 +25,9 @@ if (!process.versions.electron) {
   app.disableHardwareAcceleration();
   app.whenReady().then(async () => {
     const repo = path.resolve(__dirname, '..'), savedFile = path.join(root, 'settings.json');
-    const output = path.join(repo, 'logs', 'wardrobe-smoke'); fs.mkdirSync(output, { recursive: true });
+    const output = process.env.MAI_WARDROBE_OUTPUT || path.join(repo, 'logs', 'wardrobe-smoke'); fs.mkdirSync(output, { recursive: true });
     let settings = { firstLaunch: false, alwaysOnTop: false, deepseek: {}, petWardrobe: { outfitId: 'original' }, marker: 'KEEP' };
-    let pet, chat, timer, assistant, tray, failSave = false;
+    let pet, chat, timer, assistant, tray, failSave = false, failRead = false;
     const errors = [];
     app.on('web-contents-created', (_event, contents) => contents.on('console-message', details => { if (details.level === 'error') errors.push(details.message); }));
     const noop = () => {};
@@ -38,7 +38,7 @@ if (!process.versions.electron) {
       positionIsVisible: position => Boolean(position), defaultPosition: () => ({ x: 40, y: 40 }), applyInvisibleOpacity: noop, saveSettings: noop,
       onChatClosed: noop, publicReminderState: () => ({ active: false }), reminderMenuLabel: () => '', cancelReminder: noop, applyLoginSetting: noop,
       scheduleProactiveGreeting: noop, resetRelationshipWaiting: noop, saveMemory: noop, scheduleGirlfriendFollowUp: noop, setInvisibleMode: noop, requestQuit: noop });
-    registerPetWardrobeIpc({ ipcMain, rootDirectory: repo, nativeImage, getSettings: () => settings,
+    registerPetWardrobeIpc({ ipcMain, rootDirectory: repo, nativeImage, getSettings: () => { if(failRead) throw new Error('fixture read failure'); return settings; },
       saveSettings: () => { if (failSave) throw new Error('fixture disk failure'); fs.writeFileSync(savedFile, JSON.stringify(settings)); },
       openWardrobe: manager.openWardrobe, getWindows: () => [pet, chat, manager.getWardrobeWindow()] });
     ipcMain.handle('pet:get-settings', () => settings);
@@ -54,6 +54,45 @@ if (!process.versions.electron) {
     const choose = id => run(wardrobe, `document.querySelector('[data-outfit="${id}"]').click()`);
     await waitFor(wardrobe, `document.getElementById('status').textContent.includes('预览不会')`);
     const position = pet.getBounds();
+    const display=screen.getDisplayMatching(wardrobe.getBounds());
+    console.log(JSON.stringify({display:{scaleFactor:display.scaleFactor,bounds:display.bounds,workArea:display.workArea},contentBounds:wardrobe.getContentBounds()}));
+    // Render every shared and exclusive action with the production player.
+    const catalog = require('../renderer/pet-catalog');
+    for (const outfit of catalog.outfits) {
+      const frames = await run(wardrobe, `(async()=>{
+        const id=${JSON.stringify(outfit.id)}, asset=await MaiPetSprites.load(id);
+        const actions=['idle','wave','runRight','runLeft','love','sleep','outfitPrimary','outfitSecondary'];
+        const cell=document.createElement('canvas');cell.width=192;cell.height=208;
+        const sheet=document.createElement('canvas');sheet.width=192*8;sheet.height=208*actions.length;
+        const ctx=sheet.getContext('2d');ctx.fillStyle='#faf9f7';ctx.fillRect(0,0,sheet.width,sheet.height);
+        const player=MaiPetSprites.createPlayer(cell.getContext('2d'));player.setAsset(asset);
+        const results=[];
+        for(const [row,name] of actions.entries()){
+          const config=MaiPetCatalog.action(id,name);player.setAction(name,0,true);const samples=[];
+          for(let f=0;f<8;f++){player.draw(f*config.interval+1);ctx.drawImage(cell,f*192,row*208);samples.push(cell.toDataURL());}
+          results.push({name,unique:new Set(samples).size});
+        }
+        return {results,png:sheet.toDataURL().split(',')[1],dpr:devicePixelRatio};
+      })()`);
+      assert.ok(frames.results.every(action=>action.unique>1), `${outfit.id}: static action`);
+      fs.writeFileSync(path.join(output,`${outfit.id}-actions.png`),Buffer.from(frames.png,'base64'));
+      console.log(JSON.stringify({outfit:outfit.id,actions:frames.results,dpr:frames.dpr}));
+    }
+    await choose('home'); await waitFor(wardrobe, `!document.getElementById('apply').disabled`);
+    await run(wardrobe, `document.getElementById('pause').click()`);
+    const beforePauseSwitch=await run(wardrobe, `document.getElementById('preview').toDataURL()`);
+    await choose('school'); await waitFor(wardrobe, `!document.getElementById('apply').disabled`);
+    assert.notEqual(await run(wardrobe, `document.getElementById('preview').toDataURL()`),beforePauseSwitch,'paused selection must redraw');
+    await run(wardrobe, `document.getElementById('pause').click()`);
+    for(const theme of ['light','dark']){
+      await run(wardrobe,`maiAppearance.apply({theme:'${theme}'})`);
+      for(const width of [600,760]){
+        wardrobe.setContentSize(width,740);
+        await new Promise(resolve=>setTimeout(resolve,120));
+        assert.equal(await run(wardrobe,`document.documentElement.scrollWidth<=innerWidth && document.getElementById('preview').getBoundingClientRect().width===192`),true);
+        fs.writeFileSync(path.join(output,`wardrobe-${theme}-${width}.png`),(await wardrobe.webContents.capturePage()).toPNG());
+      }
+    }
     for (const id of ['school', 'home', 'winter']) {
       await choose(id); await waitFor(wardrobe, `!document.getElementById('apply').disabled`);
       assert.notEqual(settings.petWardrobe.outfitId, id, 'preview must not save');
@@ -122,8 +161,26 @@ if (!process.versions.electron) {
     await waitFor(wardrobe, `document.getElementById('status').textContent.includes('暂时无法加载')`);
     assert.equal(await run(wardrobe, `document.getElementById('apply').disabled`), true);
     assert.equal(settings.petWardrobe.outfitId, 'original');
+    assert.equal(await run(wardrobe,`document.querySelector('[data-outfit="home"] small').textContent`),'素材不可用');
+    assert.equal(await run(wardrobe,`document.getElementById('action').disabled && !document.getElementById('retry').hidden`),true);
     wardrobe.webContents.session.webRequest.onBeforeRequest(null);
+    await run(wardrobe,`document.getElementById('retry').click()`);
+    await waitFor(wardrobe,`!document.getElementById('apply').disabled`);
+    failRead=true;
+    await wardrobe.reload();
+    await waitFor(wardrobe,`document.getElementById('status').textContent.includes('读取失败')`);
+    assert.equal(await run(wardrobe,`document.getElementById('apply').disabled && document.getElementById('current-outfit').textContent.includes('尚未读取')`),true);
+    failRead=false;
+    await run(wardrobe,`document.getElementById('retry').click()`);
+    await waitFor(wardrobe,`document.getElementById('current-outfit').textContent.includes('原版装扮')`);
     assert.ok(!errors.some(error => /ReferenceError|TypeError|SyntaxError/.test(error)), errors.join('\n'));
+    const avatarWindow=new BrowserWindow({width:1000,height:760,show:false,webPreferences:{preload:path.join(__dirname,'mock-preload.js'),contextIsolation:true,sandbox:true}});
+    await avatarWindow.loadFile(path.join(repo,'renderer/chat.html'));
+    await run(avatarWindow,`for(const id of ['portrait','agent-portrait','user-avatar'])document.getElementById(id).src='data:image/png;base64,broken'`);
+    await waitFor(avatarWindow,`['portrait','agent-portrait','user-avatar'].every(id=>{const image=document.getElementById(id);return image.src.endsWith('avatar-placeholder.svg')&&image.naturalWidth>0;})`);
+    await new Promise(resolve=>setTimeout(resolve,200));
+    fs.writeFileSync(path.join(output,'avatar-fallback.png'),(await avatarWindow.webContents.capturePage()).toPNG());
+    avatarWindow.destroy();
     console.log(JSON.stringify({ ok: true, isolatedUserData: true, nativeMenu: true, productionIPC: true, threeOutfits: true, previewDoesNotSave: true, positionStable: true, animatedFrames: true, dragQueue: true, writeFailureRollback: true, diskReload: true, originalRestored: true, screenshots: output }));
     wardrobe.destroy(); pet.destroy(); app.exit(0);
   }).catch(error => { console.error(error); app.exit(1); });
