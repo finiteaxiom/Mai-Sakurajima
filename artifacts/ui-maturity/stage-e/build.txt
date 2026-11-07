@@ -1,0 +1,19 @@
+
+> mai-sakurajima@7.1.0 dist
+> electron-builder --win nsis --publish never
+
+  • electron-builder  version=26.15.3 os=10.0.26200
+  • loaded configuration  file=package.json ("build" field)
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=win32 arch=x64 electron=39.8.10 appOutDir=dist\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\Users\Felix\AppData\Local\Temp\mai-stage-e-6aa794b3974e4b4a832d909cd80f5c19\dist\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\Felix\AppData\Local\Temp\mai-stage-e-6aa794b3974e4b4a832d909cd80f5c19
+  • cannot find path for dependency  dependencies=["lie@undefined","pako@undefined","readable-stream@undefined","setimmediate@undefined"]
+  • updating asar integrity executable resource  executablePath=dist\win-unpacked\Mai Sakurajima.exe
+  • signing with signtool.exe  path=dist\win-unpacked\Mai Sakurajima.exe
+  • building        target=nsis file=dist\Mai-Sakurajima-Setup-7.1.0-x64.exe archs=x64 oneClick=false perMachine=false
+  • signing with signtool.exe  path=dist\win-unpacked\resources\elevate.exe
+  • signing with signtool.exe  path=dist\Mai-Sakurajima-Setup-7.1.0-x64.__uninstaller.exe
+  • signing with signtool.exe  path=dist\Mai-Sakurajima-Setup-7.1.0-x64.exe
+  • building block map  blockMapFile=dist\Mai-Sakurajima-Setup-7.1.0-x64.exe.blockmap

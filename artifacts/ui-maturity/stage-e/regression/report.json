@@ -1,0 +1,180 @@
+{
+  "ok": true,
+  "userDataIsolated": true,
+  "checks": [
+    {
+      "mode": "chat",
+      "width": 900,
+      "height": 640,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 190,
+      "inputTop": 494.60418701171875,
+      "messageHeight": 359
+    },
+    {
+      "mode": "chat",
+      "width": 1180,
+      "height": 820,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 224,
+      "inputTop": 674.6041870117188,
+      "messageHeight": 539
+    },
+    {
+      "mode": "chat",
+      "width": 1440,
+      "height": 900,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 224,
+      "inputTop": 754.6041870117188,
+      "messageHeight": 619
+    },
+    {
+      "mode": "work",
+      "width": 900,
+      "height": 640,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 190,
+      "inputTop": 532.6041870117188,
+      "messageHeight": 357
+    },
+    {
+      "mode": "work",
+      "width": 1180,
+      "height": 820,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 224,
+      "inputTop": 712.6041870117188,
+      "messageHeight": 537
+    },
+    {
+      "mode": "work",
+      "width": 1440,
+      "height": 900,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 224,
+      "inputTop": 792.6041870117188,
+      "messageHeight": 617
+    },
+    {
+      "mode": "chat-large-text-wallpaper",
+      "width": 900,
+      "height": 640,
+      "composerVisible": true,
+      "noHorizontalOverflow": true,
+      "sidebarWidth": 190,
+      "inputTop": 494.60418701171875,
+      "messageHeight": 359
+    }
+  ],
+  "contrast": [
+    {
+      "selector": ".message--user .bubble",
+      "ratio": 11.31971159588613
+    },
+    {
+      "selector": ".message--assistant .bubble",
+      "ratio": 13.88709268710702
+    },
+    {
+      "selector": ".message-time",
+      "ratio": 5.874728286739811
+    },
+    {
+      "selector": "#send-button",
+      "ratio": 6.099640736798098
+    },
+    {
+      "selector": ".agent-session-item--active strong",
+      "ratio": 9.393712589423478
+    },
+    {
+      "selector": ".agent-session-item--active small",
+      "ratio": 6.100370863659251
+    },
+    {
+      "selector": ".workspace-explorer__name",
+      "ratio": 8.393897838769725
+    },
+    {
+      "selector": "#send-button",
+      "ratio": 8.064824347324297
+    },
+    {
+      "selector": ".message--user .bubble",
+      "ratio": 10.03464078728688
+    },
+    {
+      "selector": ".message--assistant .bubble",
+      "ratio": 14.362579570299493
+    },
+    {
+      "selector": ".message-time",
+      "ratio": 9.327202754349967
+    },
+    {
+      "selector": "#send-button",
+      "ratio": 8.064824347324297
+    },
+    {
+      "selector": ".message--assistant .bubble",
+      "ratio": 13.88709268710702
+    },
+    {
+      "selector": ".message-time",
+      "ratio": 5.874728286739811
+    },
+    {
+      "selector": "#send-button",
+      "ratio": 6.099640736798098
+    }
+  ],
+  "screenshots": [
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-900.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-1180.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-1440.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\settings-light.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\settings-product-900.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\settings-product-760.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\settings-product-1180.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-narrow-navigation.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\first-connection-settings.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-recovery.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\avatar-picker.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\work-900.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\work-1180.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\work-1440.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\file-preview.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\work-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\settings-overlay-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\memory-overlay-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\shared-life-overlay-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\life-overlay-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\moments-overlay-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\history-sidebar-dark.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\chat-wallpaper-scale110.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\voice-presentation.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\assistant.png",
+    "D:\\Projects\\Mai-Sakurajima\\artifacts\\ui-maturity\\stage-e\\regression\\timer.png"
+  ],
+  "longHistory": 500,
+  "focusAndRapidToggle": true,
+  "reducedMotion": true,
+  "settingsCategories": true,
+  "draftAcrossCategoriesAndReopen": true,
+  "saveFailureRetainsDraft": true,
+  "savedFixtureVerified": true,
+  "appearancePreviewReverted": true,
+  "saveFooterVisible": true,
+  "narrowNavigation": true,
+  "firstConnectionEntry": true,
+  "failedChatDraftRecovered": true,
+  "errors": []
+}

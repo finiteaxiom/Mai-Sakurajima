@@ -1,0 +1,13 @@
+{
+  "zipMatchesSource": true,
+  "sourceFiles": 525,
+  "installerSignature": "NotSigned",
+  "ok": true,
+  "deliveryFiles": [
+    "完整源码",
+    "候选说明.txt",
+    "Mai-Sakurajima-7.1.0-source.zip",
+    "Mai-Sakurajima-Setup-7.1.0-x64.exe"
+  ],
+  "version": "7.1.0"
+}

@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "historicalSession": "验收历史记录",
+  "nsisExit": 0,
+  "preservedFiles": [
+    "mai-pet-memory.json",
+    "mai-pet-deepseek-settings.json",
+    "mai-knowledge-index.json"
+  ],
+  "scenario": "final candidate same-version overlay"
+}
