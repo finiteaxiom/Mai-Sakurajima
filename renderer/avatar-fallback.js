@@ -2,7 +2,7 @@
 (() => {
   const fallback = new URL('avatar-placeholder.svg', location.href).href;
   function recover(image) {
-    if (!(image instanceof HTMLImageElement) || !image.matches('#portrait, #agent-portrait, #user-avatar, .message-avatar, .moment-avatar, .voice-call-avatar img, .companion-presence-card img, .ui-assistant .hero img')) return;
+    if (!(image instanceof HTMLImageElement) || !image.matches('#portrait, #agent-portrait, #user-avatar, .message-avatar, .moment-avatar, .companion-presence-card img, .ui-assistant .hero img')) return;
     if (image.src !== fallback) image.src = fallback;
   }
   document.addEventListener('error', event => recover(event.target), true);

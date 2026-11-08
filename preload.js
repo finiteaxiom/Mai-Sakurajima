@@ -68,11 +68,6 @@ contextBridge.exposeInMainWorld('maiPet', {
   onLocalVoiceStatus: (callback) => {
     ipcRenderer.on('voice:local-status', (_event, status) => callback(status));
   },
-  onVoiceStreamDelta: (callback) => {
-    const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('chat:voice-stream-delta', listener);
-    return () => ipcRenderer.removeListener('chat:voice-stream-delta', listener);
-  },
   getActionStatus: () => ipcRenderer.invoke('agent:get-status'),
   configureAction: (input) => ipcRenderer.invoke('agent:configure', input),
   executeAction: (input) => ipcRenderer.invoke('agent:execute', input),

@@ -4716,7 +4716,8 @@ async function runUiSmoke(outputPath) {
         hasConversationList: Boolean(document.getElementById('recent-list')),
         hasMemoryNavigation: Boolean(document.getElementById('memory-button')),
         hasMomentsNavigation: Boolean(document.getElementById('moments-button')),
-        hasVoiceNavigation: Boolean(document.getElementById('voice-call-button')),
+        hasVoiceInput: Boolean(document.getElementById('voice-input-button')),
+        voiceCallRemoved: !document.getElementById('voice-call-button') && !document.getElementById('voice-call-overlay'),
         hasCompanionContext: Boolean(document.getElementById('companion-context')),
         hasWorkspaceSwitcher: Boolean(document.getElementById('runtime-switcher-button')),
         runtimeMode: document.querySelector('.chat-app')?.dataset.runtimeMode || '',
@@ -4859,7 +4860,8 @@ async function runUiSmoke(outputPath) {
         && chat.hasConversationList
         && chat.hasMemoryNavigation
         && chat.hasMomentsNavigation
-        && chat.hasVoiceNavigation
+        && chat.hasVoiceInput
+        && chat.voiceCallRemoved
         && chat.hasCompanionContext
         && chat.hasWorkspaceSwitcher
         && chat.runtimeMode === 'chat'
@@ -5684,7 +5686,6 @@ function registerIpc() {
       sessionId,
       senderId: event?.sender?.id
     });
-    const streamRequestId = voiceMode ? String(input?.requestId || '').slice(0, 80) : '';
     try {
       request.assertCurrent();
       const workspaceContextId = !Array.isArray(input) ? String(input?.workspaceContextId || '').slice(0, 160) : '';
@@ -5694,18 +5695,6 @@ function registerIpc() {
       const voiceProfile = voiceMode
         ? describeVoiceProfile(latestUserText, input?.voiceProfile, input?.voiceProfile?.senseEmotion)
         : null;
-      const onDelta = streamRequestId
-        ? (delta, accumulated) => {
-            if (request.isCurrent() && !event.sender.isDestroyed()) {
-              event.sender.send('chat:voice-stream-delta', {
-                requestId: streamRequestId,
-                delta,
-                accumulated,
-                voiceProfile
-              });
-            }
-          }
-        : null;
       return await chatService.send({
         messages: cleanMessages,
         sessionId,
@@ -5714,11 +5703,10 @@ function registerIpc() {
         assertRequestCurrent: request.assertCurrent,
         voiceMode,
         voiceProfile,
-        onDelta,
         workspaceContext,
         diagnostic: createLlmDiagnostic('chat_response', 'ChatService.send'),
         responseInstruction: voiceMode
-          ? `当前是实时语音交谈。reply 请使用适合自然说出口的简洁中文，通常 1—3 句话；避免 Markdown、项目符号、括号说明和过长铺垫，并自然承接用户刚说的话。用户本轮可参考的声音线索：${voiceProfile.description}。声音线索可能受麦克风影响，只把它作为语气参考，不要武断地给用户下结论。`
+          ? `当前用户通过单次语音输入发送消息。reply 请使用适合自然说出口的简洁中文，通常 1—3 句话；避免 Markdown、项目符号、括号说明和过长铺垫，并自然承接用户刚说的话。用户本轮可参考的声音线索：${voiceProfile.description}。声音线索可能受麦克风影响，只把它作为语气参考，不要武断地给用户下结论。`
           : ''
       });
     } catch (error) {

@@ -137,9 +137,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"></path></svg>
           </button>
           <textarea id="message-input" rows="1" maxlength="3000" placeholder="想和麻衣聊些什么？" aria-label="聊天内容"></textarea>
-          <button id="voice-call-button" class="voice-input-button mode-feature mode-feature--chat" type="button" aria-label="和麻衣语音通话" title="实时语音通话">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 4.8 5.3c-1.1.7-.8 3.8 1.8 7.9s5.2 5.8 6.3 5.1l2.4-1.5-2.8-4.3-2.1 1.3c-.8-.6-1.6-1.6-2.3-2.7s-1.2-2.3-1.4-3.2l2.1-1.3-1.6-2.8Z"></path><path d="M14.2 5.4c1.8.4 3.2 1.8 3.6 3.6M14.8 2c3.3.7 5.9 3.3 6.6 6.6"></path></svg>
-          </button>
           <button id="send-button" class="send-button" type="submit" aria-label="发送">发送</button>
         </form>
         <div id="chat-workspace-capability" class="chat-workspace-capability mode-feature mode-feature--chat" aria-live="polite"></div>
@@ -646,7 +643,7 @@
         自动朗读文字回复
        </strong>
        <small>
-        语音输入和实时通话始终朗读；这里控制普通文字聊天
+        单次语音输入后会朗读回复；这里控制普通文字聊天
        </small>
       </span>
       <input id="voice-auto-read" type="checkbox"/>
@@ -1212,38 +1209,6 @@
       </section>
     </div>
 
-    <div id="voice-call-overlay" class="overlay overlay--hidden">
-      <section class="voice-call-card" role="dialog" aria-modal="true" aria-labelledby="voice-call-title">
-        <div class="voice-call-topline">
-          <span id="voice-call-duration">00:00</span>
-          <span class="voice-call-private">本地麦克风</span>
-        </div>
-        <div id="voice-call-avatar" class="voice-call-avatar">
-          <img src="../assets/mai-profile.png" alt="樱岛麻衣">
-          <i></i><i></i><i></i>
-        </div>
-        <h2 id="voice-call-title">樱岛麻衣</h2>
-        <p id="voice-call-status" class="voice-call-status">正在接通…</p>
-        <div id="voice-call-transcript" class="voice-call-transcript" aria-live="polite">
-          <p class="voice-call-hint">接通后直接说话就好，她会在回答完后继续听你说。</p>
-        </div>
-        <div class="voice-call-controls">
-          <button id="voice-call-mic" class="call-control" type="button" aria-label="暂停麦克风" title="暂停麦克风">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"></path></svg>
-            <span>麦克风</span>
-          </button>
-          <button id="end-voice-call" class="call-control call-control--end" type="button" aria-label="挂断" title="挂断">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14.5c4.8-3.7 11.2-3.7 16 0l-2.3 3.6-3.2-1.8v-2.1a12.6 12.6 0 0 0-5 0v2.1l-3.2 1.8L4 14.5Z"></path></svg>
-            <span>挂断</span>
-          </button>
-          <button id="voice-call-speaker" class="call-control" type="button" aria-label="关闭扬声器" title="关闭扬声器">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"></path><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path></svg>
-            <span>扬声器</span>
-          </button>
-        </div>
-          <p class="voice-call-note">语音与语气识别都在本机完成；麻衣会分句开始回答，说话时你也可以直接打断她（戴耳机更稳）。</p>
-      </section>
-    </div>
 
     <script src="avatar-fallback.js"></script>
     <script src="appearance.js"></script>

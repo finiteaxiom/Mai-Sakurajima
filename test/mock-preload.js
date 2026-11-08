@@ -316,7 +316,6 @@ contextBridge.exposeInMainWorld('maiPet', {
   commentOnMoment: async () => momentsState,
   onShowChatSettings: noop,
   onShowLifePanel: noop,
-  onVoiceStreamDelta: noop,
   onActionSessionStarted: noop,
   onAgentEvent: noop,
   onLocalVoiceStatus: noop,

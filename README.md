@@ -26,7 +26,7 @@ npm run dist
 
 - Chat 支持连续会话、流式回复、记忆修正与长期陪伴上下文；
 - DeepSeek 是当前可用的模型 Provider；本地 Provider 只是明确返回 unavailable 的未来接口；
-- 语音、桌宠、生活助手、知识资料和主动关心均在受控 Main Process 与窄 IPC 边界内运行；
+- 单次语音输入与回复朗读、桌宠、生活助手、知识资料和主动关心均在受控 Main Process 与窄 IPC 边界内运行；不再提供实时语音通话；
 - 知识资料只在用户明确选择文件后导入；前台应用感知默认关闭；
 - Chat 不会访问任意本地文件、执行命令或控制系统。
 - Work Mode 使用独立的 Work Project / WorkSession 与短生命周期 Action Session；它可使用安全本地工具以及经过 WorkspaceSandbox、CapabilityPolicy 和逐次审批保护的 Workspace 读取与文件操作（含受限 `.docx` 新建/追加），不会写入聊天历史或长期记忆。

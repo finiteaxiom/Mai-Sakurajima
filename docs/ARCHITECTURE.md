@@ -69,6 +69,8 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 
 ## IPC 与副作用
 
+语音能力仅保留用户点击触发的单次语音输入、语气分析与回复朗读。实时语音通话已移除：没有通话窗口、持续收听循环或 `chat:voice-stream-delta` 事件。单次输入仍通过 `voice:*` 窄 IPC 和既有 Chat 调用链处理；本地语音引擎、设置及历史消息保持兼容。
+
 Preload 只暴露预定义 channel；Renderer 不得构造任意文件路径、读取 Secret 或绕过 Main。专门的 voice、assistant、timer IPC 注册器只接收它们需要的回调。其余 channel 暂由 `main.js#registerIpc()` 注册。
 
 状态模块和纯算法模块不默认保存、广播或调度。通常由 Main 的业务编排在 mutation 后决定是否调用 `saveMemory()`、`saveSettings()`、窗口广播、提醒调度或主动消息调度。这个分离避免把持久化和 UI 副作用隐藏在纯状态操作中。

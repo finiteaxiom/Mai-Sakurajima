@@ -49,7 +49,7 @@ if (!process.versions.electron) {
     const brokenReply = '{"reply":"我在。","memories":["private-metadata"],"mind":';
     await run(`loadHistory([{role:'assistant',content:${JSON.stringify(brokenReply)}},{role:'user',content:${JSON.stringify(brokenReply)}}]);`);
     assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bubble')).map(el => el.textContent)`), ['我在。', brokenReply]);
-    assert.equal(await run(`document.querySelector('.sidebar-account') === null && document.getElementById('composer').contains(document.getElementById('voice-call-button')) && document.getElementById('settings-overlay').contains(document.getElementById('user-avatar-button'))`),true);
+    assert.equal(await run(`document.querySelector('.sidebar-account') === null && !document.getElementById('voice-call-button') && !document.getElementById('voice-call-overlay') && document.getElementById('composer').contains(document.getElementById('voice-input-button')) && document.getElementById('settings-overlay').contains(document.getElementById('user-avatar-button'))`),true);
     await run(`window.maiAppearance.apply({theme:'light'}); loadHistory([
       {role:'user',content:'今天有一点累。',createdAt:'2026-10-21T12:14:00Z'},
       {role:'assistant',content:'辛苦了，学弟。\\n先休息一下吧，今天想和我聊些什么？',createdAt:'2026-10-21T12:15:00Z'},
@@ -229,11 +229,6 @@ if (!process.versions.electron) {
     await run(`window.maiAppearance.apply({theme:'light',motion:'full'})`);
     assert.equal(await run(`getComputedStyle(document.querySelector('.message--new')).animationName`),'none');
     window.webContents.debugger.detach();
-    // Presentation fixture only: no microphone, speech engine or real call is started.
-    await run(`document.getElementById('voice-call-overlay').classList.remove('overlay--hidden'); document.getElementById('voice-call-status').textContent='语音界面测试';`); await delay();
-    assert.equal(await run(`document.getElementById('voice-call-overlay').contains(document.activeElement) && getComputedStyle(document.getElementById('voice-call-overlay')).display !== 'none'`),true);
-    await capture('voice-presentation');
-    await run(`document.getElementById('end-voice-call').click()`); await delay();
     // Preserve the standalone windows previously covered by smoke-light-theme-ui.
     for (const [page,width,height,selector] of [['assistant',1180,820,'.feature-card'],['timer',520,700,'.countdown-card']]) {
       const auxiliary = new BrowserWindow({width,height,useContentSize:true,show:false,webPreferences:{preload:path.join(__dirname,'mock-preload.js'),contextIsolation:true,sandbox:true,backgroundThrottling:false}});

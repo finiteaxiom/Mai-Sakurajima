@@ -73,7 +73,8 @@ try {
   assert.equal(result.chat.hasConversationList, true);
   assert.equal(result.chat.hasMemoryNavigation, true);
   assert.equal(result.chat.hasMomentsNavigation, true);
-  assert.equal(result.chat.hasVoiceNavigation, true);
+  assert.equal(result.chat.hasVoiceInput, true);
+  assert.equal(result.chat.voiceCallRemoved, true);
   assert.equal(result.chat.hasCompanionContext, true);
   assert.equal(result.chat.hasWorkspaceSwitcher, true);
   assert.equal(result.chat.hasActionWorkspace, true);

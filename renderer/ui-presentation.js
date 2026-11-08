@@ -25,7 +25,7 @@
     ['moments-overlay', 'close-moments'], ['avatar-picker-overlay', 'close-avatar-picker'],
     ['input-dialog-overlay', 'input-dialog-close'], ['workspace-preview-overlay', 'close-workspace-preview'],
     ['history-sidebar', 'close-history'], ['companion-context', 'close-companion-inspector'],
-    ['action-context', 'close-work-inspector'], ['voice-call-overlay', 'end-voice-call']
+    ['action-context', 'close-work-inspector']
   ].map(([id, close]) => ({ element: document.getElementById(id), close: document.getElementById(close) }));
   let stack = [];
   let lastTrigger = null;

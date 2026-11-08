@@ -80,7 +80,6 @@
 .ui-chat .chat-app p {
   color: var(--ui-text);
 }
-
 .ui-chat .identity p,
 .ui-chat .identity .mood-label,
 .ui-chat .privacy-note,
@@ -97,8 +96,6 @@
 .ui-chat .topic-item__content small,
 .ui-chat .life-item__content small,
 .ui-chat .moments-privacy,
-.ui-chat .voice-call-note,
-.ui-chat .voice-call-hint,
 .ui-chat .chat-app small,
 .ui-chat .chat-app time {
   color: var(--ui-muted);
@@ -118,19 +115,15 @@
   background: #1f9d63;
   box-shadow: 0 0 0 3px rgba(31, 157, 99, 0.13);
 }
-
 .ui-chat .icon-button,
-.ui-chat .history-new-button,
-.ui-chat .call-control {
+.ui-chat .history-new-button {
   color: var(--ui-text);
   border-color: var(--ui-line);
   background: var(--ui-white);
   box-shadow: none;
 }
-
 .ui-chat .icon-button:hover,
-.ui-chat .history-new-button:hover,
-.ui-chat .call-control:hover {
+.ui-chat .history-new-button:hover {
   color: var(--ui-text);
   border-color: var(--ui-line-strong);
   background: var(--ui-canvas);
@@ -249,14 +242,12 @@
 .ui-chat .overlay {
   background: rgba(17, 17, 17, 0.34);
 }
-
 .ui-chat .history-sidebar,
 .ui-chat .settings-card,
 .ui-chat .memory-card,
 .ui-chat .shared-life-card,
 .ui-chat .life-card,
-.ui-chat .moments-card,
-.ui-chat .voice-call-card {
+.ui-chat .moments-card {
   color: var(--ui-text);
   border-color: var(--ui-line);
   background: var(--ui-white);
@@ -266,7 +257,6 @@
 .ui-chat .history-sidebar {
   border-right-color: var(--ui-line);
 }
-
 .ui-chat .history-item,
 .ui-chat .toggle-group,
 .ui-chat .voice-settings-panel,
@@ -280,8 +270,7 @@
 .ui-chat .mind-panel,
 .ui-chat .weather-panel,
 .ui-chat .life-item,
-.ui-chat .moment-card,
-.ui-chat .voice-call-transcript {
+.ui-chat .moment-card {
   color: var(--ui-text);
   border-color: var(--ui-line);
   background: var(--ui-canvas);
@@ -302,15 +291,13 @@
   border-color: #c78da8;
   background: var(--mai-tint);
 }
-
 .ui-chat .history-item__title,
 .ui-chat .memory-item__content p,
 .ui-chat .hub-item__content p,
 .ui-chat .topic-item__content p,
 .ui-chat .life-item__content p,
 .ui-chat .moment-card__content,
-.ui-chat .moment-comment p,
-.ui-chat .voice-call-line {
+.ui-chat .moment-comment p {
   color: var(--ui-text);
 }
 
@@ -398,11 +385,9 @@
   border-color: var(--ui-line);
   background: var(--ui-white);
 }
-
 .ui-chat .continuity-badge,
 .ui-chat .topic-status,
-.ui-chat .moments-auto-status,
-.ui-chat .voice-call-private {
+.ui-chat .moments-auto-status {
   color: var(--mai-accent-strong);
   border-color: #ddb4c6;
   background: var(--mai-tint);
@@ -439,24 +424,6 @@
 .ui-chat .voice-capability-status--error {
   color: var(--ui-danger);
 }
-
-.ui-chat .voice-call-avatar {
-  border-color: var(--ui-line-strong);
-  background: var(--ui-canvas);
-}
-
-.ui-chat .call-control--off {
-  color: var(--ui-muted);
-  background: var(--ui-subtle);
-}
-
-.ui-chat .call-control--end {
-  color: #fff;
-  border-color: #c93643;
-  background: #c93643;
-}
-
-.ui-chat .voice-call-line--user strong,
 .ui-chat .moment-comment--user strong {
   color: var(--mai-accent-strong);
 }

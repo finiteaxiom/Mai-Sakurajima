@@ -11,7 +11,6 @@ function createChatTurnCoordinator(options = {}) {
   let viewGeneration = 0;
   let activeTurn = null;
   let cancelOperation = null;
-  let activeVoiceStream = null;
   let disposed = false;
 
   function getState() {
@@ -44,8 +43,7 @@ function createChatTurnCoordinator(options = {}) {
       && activeTurn === turn
       && !cancelOperation
       && sessionId === turn.sessionId
-      && viewGeneration === turn.viewGeneration
-      && (typeof turn.voiceIsCurrent !== 'function' || turn.voiceIsCurrent());
+      && viewGeneration === turn.viewGeneration;
   }
 
   function removePending(turn) {
@@ -54,23 +52,10 @@ function createChatTurnCoordinator(options = {}) {
     turn.removePending?.();
   }
 
-  function clearStreamReference(turn, stream) {
-    if (turn?.stream === stream) turn.stream = null;
-    if (activeVoiceStream === stream) activeVoiceStream = null;
-  }
-
-  function cancelStream(turn) {
-    const stream = turn?.stream;
-    if (!stream) return;
-    clearStreamReference(turn, stream);
-    try { stream.cancel?.(); } catch { /* Renderer stream cancellation is best effort. */ }
-  }
-
   function cleanupTurn(turn) {
     if (!turn || turn.cleaned) return false;
     turn.cleaned = true;
     removePending(turn);
-    cancelStream(turn);
     turn.removeOptimistic?.();
     return true;
   }
@@ -106,9 +91,7 @@ function createChatTurnCoordinator(options = {}) {
     if (operation.turn.cleaned) {
       settleCancellation(operation, { kind: 'refreshed' });
     } else {
-      // The local stream was stopped immediately. Keep the original message
-      // visible and let a still-running Main request finish as text if needed.
-      operation.turn.stream = null;
+      // Keep the original request alive when Main did not confirm cancellation.
       activeTurn = operation.turn;
       settleCancellation(operation, { kind: 'resume' });
     }
@@ -178,15 +161,12 @@ function createChatTurnCoordinator(options = {}) {
       sessionId: requestedSessionId,
       viewGeneration,
       requestId: String(input.requestId || ''),
-      voiceIsCurrent: input.voiceIsCurrent,
       removeOptimistic: input.removeOptimistic,
       removePending: input.removePending,
-      stream: null,
       pendingRemoved: false,
       cleaned: false
     };
     activeTurn = turn;
-    if (input.stream) setVoiceStreamInternal(turn, input.stream);
     publishState();
 
     const handle = {
@@ -194,26 +174,10 @@ function createChatTurnCoordinator(options = {}) {
       sessionId: turn.sessionId,
       requestId: turn.requestId,
       isCurrent: () => isTurnCurrent(turn),
-      setVoiceStream: (stream) => setVoiceStreamInternal(turn, stream),
       removePending: () => removePending(turn)
     };
     Object.defineProperty(handle, TURN_HANDLE, { value: turn });
     return Object.freeze(handle);
-  }
-
-  function setVoiceStreamInternal(turn, stream) {
-    if (!stream) {
-      if (turn.stream) clearStreamReference(turn, turn.stream);
-      return false;
-    }
-    if (!isTurnCurrent(turn)) {
-      try { stream.cancel?.(); } catch { /* Stale stream cleanup is best effort. */ }
-      return false;
-    }
-    if (turn.stream && turn.stream !== stream) cancelStream(turn);
-    turn.stream = stream;
-    activeVoiceStream = stream;
-    return true;
   }
 
   async function awaitCancelDecision(turn, result, error) {
@@ -227,7 +191,6 @@ function createChatTurnCoordinator(options = {}) {
   function finishTurn(turn) {
     if (disposed || activeTurn !== turn) return false;
     activeTurn = null;
-    if (turn.stream) clearStreamReference(turn, turn.stream);
     publishState();
     return true;
   }
@@ -258,19 +221,6 @@ function createChatTurnCoordinator(options = {}) {
       if (!isTurnCurrent(turn)) {
         if (!cancelOperation?.turn || cancelOperation.turn !== turn) cleanupTurn(turn);
         return result;
-      }
-
-      const stream = turn.stream;
-      if (stream) {
-        stream.finish?.(result?.content, result?.emotion);
-        await stream.done;
-        const afterStreamCancel = await awaitCancelDecision(turn, result);
-        if (afterStreamCancel && afterStreamCancel.kind !== 'resume') return result;
-        if (disposed) return result;
-        if (!isTurnCurrent(turn)) {
-          if (!cancelOperation?.turn || cancelOperation.turn !== turn) cleanupTurn(turn);
-          return result;
-        }
       }
 
       if (!isTurnCurrent(turn)) return result;
@@ -304,7 +254,6 @@ function createChatTurnCoordinator(options = {}) {
     };
     operation.promise = new Promise((resolve) => { operation.resolve = resolve; });
     cancelOperation = operation;
-    cancelStream(turn);
     publishState();
 
     let result;
@@ -342,16 +291,6 @@ function createChatTurnCoordinator(options = {}) {
     return result || { cancelled: false };
   }
 
-  function handleVoiceStreamDelta(payload = {}) {
-    const turn = activeTurn;
-    const stream = activeVoiceStream;
-    if (!turn || !stream || !isTurnCurrent(turn)) return false;
-    if (!payload.requestId || String(payload.requestId) !== turn.requestId) return false;
-    if (turn.stream !== stream) return false;
-    stream.push?.(String(payload.delta || ''));
-    return true;
-  }
-
   function addDisposer(disposer) {
     if (typeof disposer !== 'function') return () => {};
     if (disposed) {
@@ -374,7 +313,6 @@ function createChatTurnCoordinator(options = {}) {
     const operation = cancelOperation;
     activeTurn = null;
     cancelOperation = null;
-    activeVoiceStream = null;
     for (const turn of turns) cleanupTurn(turn);
     if (operation) settleCancellation(operation, { kind: 'stale' });
     for (const disposer of disposers) {
@@ -393,15 +331,8 @@ function createChatTurnCoordinator(options = {}) {
     applyChatState,
     beginTurn,
     cancelCurrentTurn,
-    clearVoiceStream(stream) {
-      if (!stream || activeVoiceStream !== stream) return false;
-      clearStreamReference(activeTurn || cancelOperation?.turn, stream);
-      return true;
-    },
     dispose,
     getState,
-    getVoiceStream: () => disposed ? null : activeVoiceStream,
-    handleVoiceStreamDelta,
     applySessionMetadata,
     isViewCurrent,
     refreshSessionMetadata,

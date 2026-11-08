@@ -16,22 +16,6 @@ function loadRendererFunction(sandbox, startMarker, endMarker, exportName) {
   return sandbox[exportName];
 }
 
-function createStream({ resolveOnCancel = true } = {}) {
-  let resolveDone;
-  const stream = {
-    done: new Promise((resolve) => { resolveDone = resolve; }),
-    cancelled: false,
-    finished: false,
-    finish() { stream.finished = true; },
-    cancel() {
-      stream.cancelled = true;
-      if (resolveOnCancel) resolveDone();
-    },
-    resolveDone() { resolveDone(); }
-  };
-  return stream;
-}
-
 function createDeferred() {
   let resolve;
   let reject;
@@ -42,46 +26,45 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-test('a voice turn failing after deltas reports incomplete output without projecting a final reply', async () => {
-  const request = createDeferred();
-  const stream = createStream();
-  const deltas = [];
-  stream.push = delta => deltas.push(delta);
-  const rendered = [];
-  const lines = [];
-  const conversation = [];
-  let requestId;
-  const api = { sendChat: payload => { requestId = payload.requestId; return request.promise; } };
-  const coordinator = createChatTurnCoordinator({ api });
-  coordinator.applyChatState({ activeSessionId: 'voice-a', messages: [] });
-  const sandbox = {
-    api, conversation, chatTurnCoordinator: coordinator,
-    activeChatSessionId: () => coordinator.getState().sessionId,
-    voiceCallActive: true, voiceCallGeneration: 1, voiceCallSpeakerMuted: false,
-    createVoiceStreamController: () => stream,
-    addMessage(role, content) {
-      rendered.push({ role, content });
-      return { remove() {} };
-    },
-    addPendingMessage: () => ({ remove() {} }),
-    removeOptimisticMessage(target, message) { target.splice(target.indexOf(message), 1); },
-    addVoiceCallLine: (role, content) => lines.push({ role, content })
-  };
-  const send = loadRendererFunction(sandbox, 'async function sendVoiceCallTurn(', '\nasync function runVoiceCall(', 'sendVoiceCallTurn');
-  const pending = send('测试中断', 1, {});
-  assert.equal(coordinator.handleVoiceStreamDelta({ requestId, delta: '尚未完整的片段' }), true);
-  request.reject(new Error('private provider error'));
-  await pending;
-  assert.deepEqual(deltas, ['尚未完整的片段']);
-  assert.equal(stream.cancelled, true);
-  assert.equal(stream.finished, false);
-  assert.deepEqual(conversation, []);
-  assert.equal(rendered.some(message => message.role === 'assistant'), false);
-  assert.equal(lines.length, 1);
-  assert.match(lines[0].content, /语音回复未完成/);
-  assert.doesNotMatch(lines[0].content, /private provider/);
-  assert.equal(coordinator.getState().busy, false);
-});
+for (const outcome of ['recognized', 'cancelled', 'failed']) {
+  test(`single-shot voice input ${outcome} releases capture and never starts another listen`, async () => {
+    let listens = 0;
+    let disposed = 0;
+    const sent = [];
+    const notices = [];
+    const classes = new Set();
+    const sandbox = {
+      voiceInputListening: false,
+      chatTurnCoordinator: { getState: () => ({ busy: false }) },
+      chatConfig: { configured: true },
+      voiceCapabilities: { available: true },
+      voiceConfig: () => ({ culture: 'zh-CN' }),
+      voiceInputButton: { classList: { add: x => classes.add(x), remove: x => classes.delete(x) } },
+      showNotice: message => notices.push(message), hideNotice() {},
+      ensureVoiceInputMonitor: async () => ({}), beginVoiceCapture() {},
+      finishVoiceCapture: () => ({ vocalTone: 'calm' }),
+      enrichVoiceProfile: async capture => capture,
+      disposeVoiceInputMonitor: () => { disposed += 1; },
+      api: { listenVoice: async () => {
+        listens += 1;
+        if (outcome === 'failed') throw new Error('recognition failed');
+        return outcome === 'cancelled' ? { canceled: true } : { text: '单次输入' };
+      } },
+      messageInput: { value: '' }, resizeInput() {},
+      sendMessage: async options => sent.push({ text: sandbox.messageInput.value, voiceMode: options.voiceMode }),
+      errorText: error => error.message
+    };
+    const input = loadRendererFunction(sandbox, 'async function startVoiceInput()', '\nfunction setMindMeter(', 'startVoiceInput');
+    await input();
+    assert.equal(listens, 1);
+    assert.equal(disposed, 1);
+    assert.equal(sandbox.voiceInputListening, false);
+    assert.equal(classes.size, 0);
+    assert.equal(sandbox.voiceInputButton.disabled, false);
+    assert.deepEqual(sent, outcome === 'recognized' ? [{ text: '单次输入', voiceMode: true }] : []);
+    if (outcome === 'failed') assert.equal(notices.at(-1), 'recognition failed');
+  });
+}
 
 test('the Chat page loads the scoped turn coordinator before chat.js', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'chat.html'), 'utf8');
@@ -92,85 +75,8 @@ test('the Chat page loads the scoped turn coordinator before chat.js', () => {
   assert.match(coordinator, /^\(function attachChatTurnCoordinator\(\) \{/);
 });
 
-test('a voice reply completing after same-session replacement cannot overwrite the current Chat view', async () => {
-  const conversationA = [];
-  const conversationB = [{ role: 'assistant', content: 'B 的当前记录' }];
-  const rendered = [];
-  const voiceLines = [];
-  let moodUpdates = 0;
-  let refreshes = 0;
-  const stream = createStream({ resolveOnCancel: false });
-  let sandbox;
-  const api = {
-    sendChat: async () => ({
-      content: 'A 的迟到回复',
-      emotion: 'happy',
-      sessionId: 'session-a',
-      createdAt: '2026-10-19T00:00:00.000Z',
-      sessions: []
-    }),
-    cancelChatRequest: async () => ({ cancelled: false })
-  };
-  const coordinator = createChatTurnCoordinator({
-    api,
-    onApplyChatState: (state) => {
-      sandbox.conversation = state.messages;
-    }
-  });
-  sandbox = {
-    chatTurnCoordinator: coordinator,
-    activeChatSessionId: () => coordinator.getState().sessionId,
-    conversation: conversationA,
-    voiceCallActive: true,
-    voiceCallGeneration: 7,
-    voiceCallSpeakerMuted: false,
-    chatConfig: { memoryEnabled: true },
-    api,
-    createVoiceStreamController: () => stream,
-    addMessage(role, content) {
-      const entry = { sessionId: coordinator.getState().sessionId, role, content, removed: false };
-      rendered.push(entry);
-      return { remove() { entry.removed = true; } };
-    },
-    addPendingMessage() { return { remove() {} }; },
-    removeOptimisticMessage(target, message) {
-      const index = target.indexOf(message);
-      if (index >= 0) target.splice(index, 1);
-    },
-    setMood() { moodUpdates += 1; },
-    renderHistory() {},
-    refreshMemories() { refreshes += 1; },
-    refreshLifeState() { refreshes += 1; },
-    addVoiceCallLine(role, content) { voiceLines.push({ role, content }); }
-  };
-  coordinator.applyChatState({ activeSessionId: 'session-a', messages: conversationA });
-  const sendVoiceCallTurn = loadRendererFunction(
-    sandbox,
-    'async function sendVoiceCallTurn(',
-    '\nasync function runVoiceCall(',
-    'sendVoiceCallTurn'
-  );
-  const pendingTurn = sendVoiceCallTurn('A 的语音消息', 7, {});
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(stream.finished, true, 'the production voice turn should be waiting for stream completion');
-
-  coordinator.applyChatState({ activeSessionId: 'session-a', messages: conversationB });
-  stream.resolveDone();
-  await pendingTurn;
-
-  assert.equal(stream.cancelled, true);
-  assert.deepEqual(conversationA, []);
-  assert.deepEqual(sandbox.conversation, conversationB);
-  assert.equal(rendered.some((message) => message.role === 'assistant'), false);
-  assert.equal(moodUpdates, 0);
-  assert.equal(refreshes, 0);
-  assert.deepEqual(voiceLines, []);
-  coordinator.dispose();
-});
-
 test('stopping a Renderer Chat turn uses coordinator confirmation and restores controls', async () => {
   const cancelCalls = [];
-  const stream = createStream();
   const api = {
     async cancelChatRequest(sessionId) {
       cancelCalls.push(sessionId);
@@ -180,7 +86,6 @@ test('stopping a Renderer Chat turn uses coordinator confirmation and restores c
   const coordinator = createChatTurnCoordinator({ api });
   coordinator.applyChatState({ activeSessionId: 'session-a', messages: [] });
   const turn = coordinator.beginTurn({ sessionId: 'session-a' });
-  turn.setVoiceStream(stream);
   const sandbox = {
     chatTurnCoordinator: coordinator,
     showNotice() {},
@@ -196,52 +101,8 @@ test('stopping a Renderer Chat turn uses coordinator confirmation and restores c
   await cancelChatUiTurn();
 
   assert.deepEqual(cancelCalls, ['session-a']);
-  assert.equal(stream.cancelled, true);
   assert.equal(coordinator.getState().busy, false);
   assert.equal(coordinator.getState().activeTurnToken, '');
-  coordinator.dispose();
-});
-
-test('hanging up a voice call cancels its pending Main-owned Chat turn', async () => {
-  let voiceState = '';
-  const stream = createStream();
-  const api = {
-    cancelChatRequest: async () => ({ cancelled: true }),
-    stopVoiceListening: () => Promise.resolve()
-  };
-  const coordinator = createChatTurnCoordinator({ api });
-  coordinator.applyChatState({ activeSessionId: 'session-a', messages: [] });
-  const turn = coordinator.beginTurn({ sessionId: 'session-a' });
-  turn.setVoiceStream(stream);
-  const sandbox = {
-    chatTurnCoordinator: coordinator,
-    voiceCallActive: true,
-    voiceCallGeneration: 8,
-    voiceCallDurationTimer: 4,
-    api,
-    clearInterval() {},
-    stopSpeaking() {},
-    disposeCallMicrophoneMonitor() {},
-    setVoiceCallState: (state) => { voiceState = state; },
-    voiceCallOverlay: { classList: { contains: () => false, add() {} } },
-    messageInput: { focus() {} },
-    errorText: (error) => String(error?.message || error),
-    showNotice() {}
-  };
-  const endVoiceCall = loadRendererFunction(
-    sandbox,
-    'function endVoiceCall()',
-    '\nasync function toggleVoiceCallMic(',
-    'endVoiceCall'
-  );
-  endVoiceCall();
-  await new Promise((resolve) => setImmediate(resolve));
-
-  assert.equal(stream.cancelled, true);
-  assert.equal(sandbox.voiceCallActive, false);
-  assert.equal(sandbox.voiceCallGeneration, 9);
-  assert.equal(voiceState, '通话已结束');
-  assert.equal(coordinator.getState().busy, false);
   coordinator.dispose();
 });
 

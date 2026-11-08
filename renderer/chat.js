@@ -10,7 +10,6 @@ const assistantButton = document.getElementById('assistant-button');
 const lifeButton = document.getElementById('life-button');
 const sharedLifeButton = document.getElementById('shared-life-button');
 const momentsButton = document.getElementById('moments-button');
-const voiceCallButton = document.getElementById('voice-call-button');
 const voiceInputButton = document.getElementById('voice-input-button');
 const historyButton = document.getElementById('history-button');
 const newChatButton = document.getElementById('new-chat-button');
@@ -281,14 +280,6 @@ const momentsEmpty = document.getElementById('moments-empty');
 const momentsAutoStatus = document.getElementById('moments-auto-status');
 const momentsStatus = document.getElementById('moments-status');
 const generateMomentButton = document.getElementById('generate-moment');
-const voiceCallOverlay = document.getElementById('voice-call-overlay');
-const voiceCallDuration = document.getElementById('voice-call-duration');
-const voiceCallAvatar = document.getElementById('voice-call-avatar');
-const voiceCallStatus = document.getElementById('voice-call-status');
-const voiceCallTranscript = document.getElementById('voice-call-transcript');
-const voiceCallMicButton = document.getElementById('voice-call-mic');
-const voiceCallSpeakerButton = document.getElementById('voice-call-speaker');
-const endVoiceCallButton = document.getElementById('end-voice-call');
 const portrait = document.getElementById('portrait');
 const agentPortrait = document.getElementById('agent-portrait');
 const inputDialogOverlay = document.getElementById('input-dialog-overlay');
@@ -432,14 +423,7 @@ let activeSpeechAudio = null;
 let activeSpeechCancel = null;
 let speechGeneration = 0;
 let voiceInputListening = false;
-let voiceCallActive = false;
-let voiceCallGeneration = 0;
-let voiceCallMicPaused = false;
-let voiceCallSpeakerMuted = false;
-let voiceCallStartedAt = 0;
-let voiceCallDurationTimer = null;
-let voiceCallLoopPromise = null;
-let callMicrophoneMonitor = null;
+let voiceInputMonitor = null;
 let inputDialogState = null;
 let conversationContextSessionId = '';
 let conversationContextKind = 'chat';
@@ -954,28 +938,6 @@ function planRendererSpeechStyle(text, options = {}) {
   };
 }
 
-function splitSpeakableSegments(value, flush = false) {
-  let buffer = String(value || '').replace(/\s+/g, ' ').trimStart();
-  const segments = [];
-  while (buffer) {
-    const punctuation = buffer.search(/[。！？!?；;…\n]/);
-    const softLimit = buffer.length >= 30
-      ? Math.max(buffer.lastIndexOf('，', 30), buffer.lastIndexOf(',', 30))
-      : -1;
-    let end = punctuation >= 0 ? punctuation + 1 : softLimit >= 10 ? softLimit + 1 : -1;
-    if (end < 0 && buffer.length >= 46) end = 46;
-    if (end < 0) break;
-    const segment = buffer.slice(0, end).trim();
-    if (segment) segments.push(segment);
-    buffer = buffer.slice(end).trimStart();
-  }
-  if (flush && buffer.trim()) {
-    segments.push(buffer.trim());
-    buffer = '';
-  }
-  return { segments, remainder: buffer };
-}
-
 function writeAscii(view, offset, text) {
   for (let index = 0; index < text.length; index += 1) {
     view.setUint8(offset + index, text.charCodeAt(index));
@@ -1025,8 +987,8 @@ function floatSamplesToWavBase64(chunks, inputSampleRate) {
   return window.btoa(binary);
 }
 
-async function ensureCallMicrophoneMonitor() {
-  if (callMicrophoneMonitor) return callMicrophoneMonitor;
+async function ensureVoiceInputMonitor() {
+  if (voiceInputMonitor) return voiceInputMonitor;
   if (!navigator.mediaDevices?.getUserMedia) return null;
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -1056,8 +1018,6 @@ async function ensureCallMicrophoneMonitor() {
     energyFrames: 0,
     speechFrames: 0,
     captureStartedAt: 0,
-    interruptStartedAt: 0,
-    lastInterruptAt: 0
   };
   processor.onaudioprocess = (event) => {
     const samples = event.inputBuffer.getChannelData(0);
@@ -1077,28 +1037,16 @@ async function ensureCallMicrophoneMonitor() {
       monitor.energyFrames += 1;
       if (rms >= 0.015) monitor.speechFrames += 1;
     }
-    const activeStream = chatTurnCoordinator.getVoiceStream();
-    if (activeStream?.canInterrupt && rms >= 0.07) {
-      if (!monitor.interruptStartedAt) monitor.interruptStartedAt = Date.now();
-      if (Date.now() - monitor.interruptStartedAt >= 320
-        && Date.now() - monitor.lastInterruptAt >= 1200) {
-        monitor.lastInterruptAt = Date.now();
-        monitor.interruptStartedAt = 0;
-        activeStream.interrupt();
-      }
-    } else if (rms < 0.045) {
-      monitor.interruptStartedAt = 0;
-    }
   };
   source.connect(processor);
   processor.connect(silentOutput);
   silentOutput.connect(context.destination);
-  callMicrophoneMonitor = monitor;
+  voiceInputMonitor = monitor;
   return monitor;
 }
 
 function beginVoiceCapture() {
-  const monitor = callMicrophoneMonitor;
+  const monitor = voiceInputMonitor;
   if (!monitor) return false;
   monitor.chunks = [];
   monitor.energyTotal = 0;
@@ -1112,7 +1060,7 @@ function beginVoiceCapture() {
 }
 
 function finishVoiceCapture() {
-  const monitor = callMicrophoneMonitor;
+  const monitor = voiceInputMonitor;
   if (!monitor || !monitor.capturing) return null;
   monitor.capturing = false;
   const frames = Math.max(1, monitor.energyFrames);
@@ -1163,9 +1111,9 @@ async function enrichVoiceProfile(capture) {
   return profile;
 }
 
-async function disposeCallMicrophoneMonitor() {
-  const monitor = callMicrophoneMonitor;
-  callMicrophoneMonitor = null;
+async function disposeVoiceInputMonitor() {
+  const monitor = voiceInputMonitor;
+  voiceInputMonitor = null;
   if (!monitor) return;
   monitor.capturing = false;
   monitor.processor.onaudioprocess = null;
@@ -1306,7 +1254,7 @@ function playLocalSpeech(result, config, generation) {
 
 async function speakText(text, options = {}) {
   const content = cleanSpeechText(text);
-  if (!content || (options.call && voiceCallSpeakerMuted)) {
+  if (!content) {
     return false;
   }
   stopSpeaking();
@@ -1339,123 +1287,6 @@ async function speakText(text, options = {}) {
   return speakSystemText(content, config, generation);
 }
 
-function createVoiceStreamController(requestId, callGeneration, voiceProfile = {}) {
-  stopSpeaking();
-  const controller = {
-    requestId,
-    callGeneration,
-    voiceProfile,
-    speechGeneration,
-    buffer: '',
-    queue: [],
-    receivedDelta: false,
-    closed: false,
-    canceled: false,
-    canInterrupt: false,
-    wake: null,
-    finalEmotion: '',
-    async consume() {
-      const config = voiceConfig();
-      while (!controller.canceled
-        && controller.callGeneration === voiceCallGeneration
-        && voiceCallActive) {
-        if (!controller.queue.length) {
-          if (controller.closed) break;
-          await new Promise((resolve) => { controller.wake = resolve; });
-          controller.wake = null;
-          continue;
-        }
-        const item = controller.queue.shift();
-        if (!item || voiceCallSpeakerMuted) continue;
-        if (controller.speechGeneration !== speechGeneration) break;
-        setVoiceCallState('麻衣正在说话…你可以直接打断', true);
-        setMood({ emotion: item.style.emotion, action: item.style.action });
-        controller.canInterrupt = true;
-        try {
-          if (config.engine !== 'system') {
-            const prepared = await item.prepared;
-            if (prepared?.error) throw prepared.error;
-            const result = prepared?.result;
-            if (controller.canceled || controller.speechGeneration !== speechGeneration) break;
-            await playLocalSpeech(result, config, controller.speechGeneration);
-          } else {
-            await speakSystemText(item.text, {
-              ...config,
-              rate: item.style.rate
-            }, controller.speechGeneration);
-          }
-        } catch (error) {
-          if (!controller.canceled && controller.speechGeneration === speechGeneration) {
-            addVoiceCallLine('system', `${errorText(error)} 已跳过这一句。`);
-          }
-        } finally {
-          controller.canInterrupt = false;
-        }
-      }
-      controller.canInterrupt = false;
-      chatTurnCoordinator.clearVoiceStream(controller);
-      return !controller.canceled;
-    },
-    enqueue(text, emotion = '') {
-      const content = cleanSpeechText(text);
-      if (!content || controller.canceled || voiceCallSpeakerMuted) return;
-      const config = voiceConfig();
-      const style = planRendererSpeechStyle(content, {
-        emotion: emotion || controller.finalEmotion,
-        voiceProfile: controller.voiceProfile,
-        baseRate: config.rate
-      });
-      const prepared = config.engine === 'system'
-        ? Promise.resolve(null)
-        : api.synthesizeLocalVoice({
-            text: content,
-            rate: style.rate,
-            emotion: style.emotion,
-            instruction: style.instruction
-          }).then((result) => ({ result }), (error) => ({ error }));
-      controller.queue.push({ text: content, style, prepared });
-      controller.wake?.();
-    },
-    push(delta) {
-      if (controller.canceled || !delta) return;
-      controller.receivedDelta = true;
-      const parsed = splitSpeakableSegments(`${controller.buffer}${delta}`);
-      controller.buffer = parsed.remainder;
-      parsed.segments.forEach((segment) => controller.enqueue(segment));
-    },
-    finish(finalText, emotion = '') {
-      controller.finalEmotion = emotion;
-      if (!controller.receivedDelta) {
-        controller.enqueue(finalText, emotion);
-      } else {
-        const parsed = splitSpeakableSegments(controller.buffer, true);
-        controller.buffer = '';
-        parsed.segments.forEach((segment) => controller.enqueue(segment, emotion));
-      }
-      controller.closed = true;
-      controller.wake?.();
-    },
-    cancel() {
-      controller.canceled = true;
-      controller.closed = true;
-      controller.queue = [];
-      controller.wake?.();
-      if (controller.speechGeneration === speechGeneration) stopSpeaking();
-    },
-    interrupt() {
-      if (!controller.canInterrupt || controller.canceled) return;
-      controller.cancel();
-      setVoiceCallState('听到你了，请继续说…', true);
-    }
-  };
-  controller.done = controller.consume();
-  return controller;
-}
-
-function handleVoiceStreamDelta(payload = {}) {
-  chatTurnCoordinator.handleVoiceStreamDelta(payload);
-}
-
 function renderLocalVoiceStatus(status = {}) {
   voiceCapabilities.localTts = status;
   const progress = status.installProgress || {};
@@ -1473,7 +1304,7 @@ function renderLocalVoiceStatus(status = {}) {
     localVoiceDetail.textContent = detail;
     installLocalVoiceButton.textContent = '安装中…';
   } else if (status.needsUpgrade) {
-    localVoiceTitle.textContent = '可以升级为情绪通话';
+    localVoiceTitle.textContent = '可以升级为情绪朗读';
     localVoiceDetail.textContent = status.error
       || '会保留并复用现有女声，只需补充约 3.3 GB 的情绪语音与语气感知模型。';
     installLocalVoiceButton.textContent = '升级情绪语音';
@@ -1567,7 +1398,7 @@ async function refreshVoiceCapabilities(force = false) {
     const ttsLabel = localStatus.enhanced && localStatus.ready
       ? `CosyVoice 情绪女声已就绪（${localStatus.runtime?.device || '本地'}）`
       : localStatus.needsUpgrade
-        ? '旧版女声可用，可升级情绪通话'
+        ? '旧版女声可用，可升级情绪朗读'
         : localStatus.installed
           ? 'CosyVoice 已安装，将在首次朗读时载入'
           : 'CosyVoice 尚未安装，暂用系统备用声音';
@@ -1753,7 +1584,6 @@ function applyAvatarSelections() {
 
 function openAvatarPicker(target) {
   if (!['mai', 'user'].includes(target)) return;
-  endVoiceCall();
   for (const overlay of [settingsOverlay, memoryOverlay, sharedLifeOverlay, lifeOverlay, momentsOverlay]) {
     overlay.classList.add('overlay--hidden');
   }
@@ -1912,7 +1742,6 @@ function updateAppearancePreview() {
 }
 
 function openSettings(section) {
-  endVoiceCall();
   memoryOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
   sharedLifeOverlay.classList.add('overlay--hidden');
@@ -1937,7 +1766,6 @@ function closeSettings() {
 }
 
 async function openMemory() {
-  endVoiceCall();
   settingsOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
   sharedLifeOverlay.classList.add('overlay--hidden');
@@ -1953,7 +1781,6 @@ function closeMemory() {
 }
 
 async function openSharedLife() {
-  endVoiceCall();
   settingsOverlay.classList.add('overlay--hidden');
   memoryOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
@@ -1986,7 +1813,6 @@ function prepareLifeForm() {
 }
 
 async function openLife() {
-  endVoiceCall();
   settingsOverlay.classList.add('overlay--hidden');
   memoryOverlay.classList.add('overlay--hidden');
   sharedLifeOverlay.classList.add('overlay--hidden');
@@ -2142,7 +1968,6 @@ async function refreshMoments() {
 }
 
 async function openMoments() {
-  endVoiceCall();
   settingsOverlay.classList.add('overlay--hidden');
   memoryOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
@@ -2195,40 +2020,7 @@ function waitFor(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function formatCallDuration(milliseconds) {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
-  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
-  return `${minutes}:${seconds}`;
-}
-
-function updateCallDuration() {
-  voiceCallDuration.textContent = formatCallDuration(Date.now() - voiceCallStartedAt);
-}
-
-function setVoiceCallState(status, active = false) {
-  voiceCallStatus.textContent = status;
-  voiceCallAvatar.classList.toggle('voice-call-avatar--active', active);
-}
-
-function addVoiceCallLine(role, content) {
-  const hint = voiceCallTranscript.querySelector('.voice-call-hint');
-  hint?.remove();
-  const line = document.createElement('p');
-  line.className = `voice-call-line voice-call-line--${role}`;
-  const name = document.createElement('strong');
-  name.textContent = role === 'user' ? '你：' : role === 'assistant' ? '麻衣：' : '提示：';
-  const text = document.createElement('span');
-  text.textContent = content;
-  line.append(name, text);
-  voiceCallTranscript.appendChild(line);
-  voiceCallTranscript.scrollTop = voiceCallTranscript.scrollHeight;
-}
-
 async function startVoiceInput() {
-  if (voiceCallActive) {
-    return;
-  }
   if (voiceInputListening) {
     await api.stopVoiceListening();
     return;
@@ -2256,7 +2048,7 @@ async function startVoiceInput() {
   showNotice('正在听你说话…说完后停顿一下即可发送。');
   let capture = null;
   try {
-    await ensureCallMicrophoneMonitor().catch(() => null);
+    await ensureVoiceInputMonitor().catch(() => null);
     beginVoiceCapture();
     const result = await api.listenVoice({
       culture: voiceConfig().culture,
@@ -2280,242 +2072,11 @@ async function startVoiceInput() {
     showNotice(errorText(error));
   } finally {
     if (!capture) finishVoiceCapture();
-    if (!voiceCallActive) disposeCallMicrophoneMonitor();
+    disposeVoiceInputMonitor();
     voiceInputListening = false;
     voiceInputButton.classList.remove('voice-input-button--listening');
     voiceInputButton.title = '说一句话';
     voiceInputButton.disabled = false;
-  }
-}
-
-async function sendVoiceCallTurn(content, generation, voiceProfile = {}) {
-  const normalized = String(content || '').trim();
-  if (!normalized) return null;
-  const requestId = `voice-${generation}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const createdAt = new Date().toISOString();
-  const requestSessionId = activeChatSessionId();
-  const turnConversation = conversation;
-  const optimisticUserMessage = { role: 'user', content: normalized };
-  turnConversation.push(optimisticUserMessage);
-  const optimisticUserElement = addMessage('user', normalized, { createdAt });
-  const pending = addPendingMessage();
-  const turn = chatTurnCoordinator.beginTurn({
-    sessionId: requestSessionId,
-    requestId,
-    voiceIsCurrent: () => (
-      activeChatSessionId() === requestSessionId
-      && conversation === turnConversation
-      && voiceCallActive
-      && generation === voiceCallGeneration
-    ),
-    removeOptimistic: () => {
-      optimisticUserElement.remove();
-      removeOptimisticMessage(turnConversation, optimisticUserMessage);
-    },
-    removePending: () => pending.remove()
-  });
-  if (!turn) {
-    pending.remove();
-    optimisticUserElement.remove();
-    removeOptimisticMessage(turnConversation, optimisticUserMessage);
-    return null;
-  }
-
-  if (!voiceCallSpeakerMuted) {
-    try {
-      turn.setVoiceStream(createVoiceStreamController(requestId, generation, voiceProfile));
-    } catch (error) {
-      return chatTurnCoordinator.runTurn(turn, {
-        send: async () => { throw error; },
-        onError: (failure, currentTurn) => {
-          if (currentTurn.isCurrent()) addVoiceCallLine('system', '语音播放未能开始，请检查语音设置或查看诊断。');
-        }
-      });
-    }
-  }
-
-  return chatTurnCoordinator.runTurn(turn, {
-    send: () => api.sendChat({
-      sessionId: requestSessionId,
-      messages: turnConversation,
-      voiceMode: true,
-      requestId,
-      voiceProfile
-    }),
-    onReply: (result, currentTurn) => {
-      if (!currentTurn.isCurrent()) return;
-      addMessage('assistant', result.content, { createdAt: result.createdAt, voiceMode: true });
-      turnConversation.push({ role: 'assistant', content: result.content });
-      conversation = turnConversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
-      if (Array.isArray(result.sessions)) {
-        runtimeSessions = result.sessions;
-        renderHistory();
-      }
-      setMood(result);
-      const replyView = chatTurnCoordinator.getState();
-      if (chatConfig.memoryEnabled) refreshMemories(() => chatTurnCoordinator.isViewCurrent(replyView));
-      refreshLifeState(() => chatTurnCoordinator.isViewCurrent(replyView));
-      if (voiceCallActive && generation === voiceCallGeneration) addVoiceCallLine('assistant', result.content);
-      return result;
-    },
-    onError: (error, currentTurn) => {
-      if (currentTurn.isCurrent()) addVoiceCallLine('system', '本次语音回复未完成，已播放的片段不代表完整回复。请稍后再试，或在设置中查看诊断。');
-    }
-  });
-}
-
-async function runVoiceCall(generation) {
-  try {
-    setVoiceCallState('已经接通', true);
-    await speakText('我在。想和我聊什么？', { call: true, emotion: 'curious' });
-    while (voiceCallActive && generation === voiceCallGeneration) {
-      if (voiceCallMicPaused) {
-        setVoiceCallState('麦克风已暂停', false);
-        await waitFor(350);
-        continue;
-      }
-      setVoiceCallState('正在听你说话…', true);
-      let recognized = null;
-      let capture = null;
-      try {
-        beginVoiceCapture();
-        recognized = await api.listenVoice({
-          culture: voiceConfig().culture,
-          timeoutSeconds: 30
-        });
-        capture = finishVoiceCapture();
-      } catch (error) {
-        capture = finishVoiceCapture();
-        if (!voiceCallActive || generation !== voiceCallGeneration) break;
-        addVoiceCallLine('system', errorText(error));
-        voiceCallMicPaused = true;
-        voiceCallMicButton.classList.add('call-control--off');
-        voiceCallMicButton.querySelector('span').textContent = '继续收听';
-        continue;
-      }
-      if (!voiceCallActive || generation !== voiceCallGeneration) {
-        break;
-      }
-      if (recognized?.canceled) {
-        await waitFor(200);
-        continue;
-      }
-      setVoiceCallState('正在理解你的语气…', true);
-      const voiceProfile = await enrichVoiceProfile(capture);
-      const content = String(recognized?.text || voiceProfile.senseText || '').trim();
-      if (!content) {
-        setVoiceCallState('没有听清，再说一次吧', false);
-        await waitFor(750);
-        continue;
-      }
-      addVoiceCallLine('user', content);
-      setVoiceCallState('麻衣正在回答…', true);
-      const result = await sendVoiceCallTurn(content, generation, voiceProfile);
-      if (!result || !voiceCallActive || generation !== voiceCallGeneration) {
-        if (!result) {
-          setVoiceCallState('回复失败，调整后再试一次吧', false);
-          await waitFor(900);
-        }
-        continue;
-      }
-      setVoiceCallState(voiceCallSpeakerMuted ? '回答已显示，继续听你说' : '继续听你说…', true);
-      if (/^(?:先挂了|挂断|拜拜|再见|先这样)/.test(content)) {
-        endVoiceCall();
-        break;
-      }
-    }
-  } finally {
-    if (generation === voiceCallGeneration) {
-      voiceCallLoopPromise = null;
-    }
-  }
-}
-
-async function startVoiceCall() {
-  if (voiceCallActive || chatTurnCoordinator.getState().busy) {
-    return;
-  }
-  if (!chatConfig.configured) {
-    showNotice('请先设置 DeepSeek API Key，再和麻衣语音通话。');
-    openSettings();
-    return;
-  }
-  if (!voiceCapabilities.available) {
-    await refreshVoiceCapabilities(true);
-    if (!voiceCapabilities.available) {
-      showNotice(voiceCapabilityStatus.textContent);
-      return;
-    }
-  }
-  if (voiceInputListening) {
-    await api.stopVoiceListening();
-    voiceInputListening = false;
-  }
-  settingsOverlay.classList.add('overlay--hidden');
-  memoryOverlay.classList.add('overlay--hidden');
-  lifeOverlay.classList.add('overlay--hidden');
-  sharedLifeOverlay.classList.add('overlay--hidden');
-  momentsOverlay.classList.add('overlay--hidden');
-  closeHistory();
-  voiceCallTranscript.innerHTML = '<p class="voice-call-hint">接通后直接说话就好。麻衣会边想边说，你开口时也可以打断她。</p>';
-  voiceCallActive = true;
-  voiceCallGeneration += 1;
-  const generation = voiceCallGeneration;
-  voiceCallMicPaused = false;
-  voiceCallSpeakerMuted = false;
-  voiceCallStartedAt = Date.now();
-  updateCallDuration();
-  clearInterval(voiceCallDurationTimer);
-  voiceCallDurationTimer = setInterval(updateCallDuration, 1000);
-  voiceCallMicButton.classList.remove('call-control--off');
-  voiceCallSpeakerButton.classList.remove('call-control--off');
-  voiceCallMicButton.querySelector('span').textContent = '麦克风';
-  voiceCallSpeakerButton.querySelector('span').textContent = '扬声器';
-  voiceCallOverlay.classList.remove('overlay--hidden');
-  try {
-    await ensureCallMicrophoneMonitor();
-  } catch (error) {
-    addVoiceCallLine('system', '没有取得浏览器麦克风分析权限，将继续使用 Windows 本地识别，但暂时无法判断语气或检测打断。');
-  }
-  if (!voiceCallActive || generation !== voiceCallGeneration) return;
-  voiceCallLoopPromise = runVoiceCall(generation);
-}
-
-function endVoiceCall() {
-  if (!voiceCallActive && voiceCallOverlay.classList.contains('overlay--hidden')) {
-    return;
-  }
-  if (chatTurnCoordinator.getState().activeTurnToken) {
-    chatTurnCoordinator.cancelCurrentTurn({ onError: (error) => showNotice(errorText(error)) }).catch(() => {});
-  }
-  voiceCallActive = false;
-  voiceCallGeneration += 1;
-  clearInterval(voiceCallDurationTimer);
-  voiceCallDurationTimer = null;
-  api.stopVoiceListening().catch(() => {});
-  stopSpeaking();
-  disposeCallMicrophoneMonitor();
-  setVoiceCallState('通话已结束', false);
-  voiceCallOverlay.classList.add('overlay--hidden');
-  messageInput.focus();
-}
-
-async function toggleVoiceCallMic() {
-  voiceCallMicPaused = !voiceCallMicPaused;
-  voiceCallMicButton.classList.toggle('call-control--off', voiceCallMicPaused);
-  voiceCallMicButton.querySelector('span').textContent = voiceCallMicPaused ? '继续收听' : '麦克风';
-  if (voiceCallMicPaused) {
-    await api.stopVoiceListening();
-  }
-}
-
-function toggleVoiceCallSpeaker() {
-  voiceCallSpeakerMuted = !voiceCallSpeakerMuted;
-  voiceCallSpeakerButton.classList.toggle('call-control--off', voiceCallSpeakerMuted);
-  voiceCallSpeakerButton.querySelector('span').textContent = voiceCallSpeakerMuted ? '已静音' : '扬声器';
-  if (voiceCallSpeakerMuted) {
-    chatTurnCoordinator.getVoiceStream()?.cancel();
-    stopSpeaking();
   }
 }
 
@@ -2682,7 +2243,6 @@ async function resetMind() {
 
 function openHistory() {
   setCompanionInspectorOpen(false);
-  endVoiceCall();
   settingsOverlay.classList.add('overlay--hidden');
   memoryOverlay.classList.add('overlay--hidden');
   lifeOverlay.classList.add('overlay--hidden');
@@ -4910,7 +4470,6 @@ knowledgeButton.addEventListener('click', () => api.openAssistant('knowledge'));
 lifeButton.addEventListener('click', openLife);
 sharedLifeButton.addEventListener('click', async () => { await openSharedLife(); selectSharedLifeTab('projects'); });
 momentsButton.addEventListener('click', openMoments);
-voiceCallButton.addEventListener('click', startVoiceCall);
 voiceInputButton.addEventListener('click', startVoiceInput);
 historyButton.addEventListener('click', openHistory);
 workspaceSearchButton.addEventListener('click', openHistory);
@@ -4954,9 +4513,6 @@ doneSharedLifeButton.addEventListener('click', closeSharedLife);
 closeLifeButton.addEventListener('click', closeLife);
 doneLifeButton.addEventListener('click', closeLife);
 closeMomentsButton.addEventListener('click', closeMoments);
-endVoiceCallButton.addEventListener('click', endVoiceCall);
-voiceCallMicButton.addEventListener('click', toggleVoiceCallMic);
-voiceCallSpeakerButton.addEventListener('click', toggleVoiceCallSpeaker);
 for (const [overlay, close] of [[avatarPickerOverlay, closeAvatarPicker], [settingsOverlay, closeSettings], [memoryOverlay, closeMemory], [sharedLifeOverlay, closeSharedLife], [lifeOverlay, closeLife], [momentsOverlay, closeMoments]]) overlay.addEventListener('pointerdown', (event) => { if (event.target === overlay) close(); });
 inputDialogForm.addEventListener('submit', (event) => { event.preventDefault(); submitInputDialog(); });
 inputDialogClose.addEventListener('click', () => closeInputDialog(null));
@@ -4993,7 +4549,6 @@ document.addEventListener('keydown', (event) => {
   else if (!workspacePreviewOverlay.hidden) closeWorkspacePreviewButton.click();
   else if (!inputDialogOverlay.classList.contains('input-dialog-overlay--hidden')) closeInputDialog(null);
   else if (!conversationContextMenu.classList.contains('conversation-context-menu--hidden')) closeConversationContextMenu();
-  else if (!voiceCallOverlay.classList.contains('overlay--hidden')) endVoiceCall();
   else if (!avatarPickerOverlay.classList.contains('overlay--hidden')) closeAvatarPicker();
   else if (!settingsOverlay.classList.contains('overlay--hidden')) closeSettings();
   else if (!memoryOverlay.classList.contains('overlay--hidden')) closeMemory();
@@ -5061,12 +4616,10 @@ try {
 window.addEventListener('beforeunload', () => {
   chatTurnCoordinator.dispose();
   workRendererBindings.dispose();
-  voiceCallActive = false;
   api.stopVoiceListening().catch(() => {});
   stopSpeaking();
-  disposeCallMicrophoneMonitor();
+  disposeVoiceInputMonitor();
   clearTimeout(portraitReactionTimer);
-  clearInterval(voiceCallDurationTimer);
 });
 
 Promise.all([
@@ -5095,7 +4648,6 @@ Promise.all([
 
 api.onShowChatSettings(openSettings);
 api.onShowLifePanel(openLife);
-chatTurnCoordinator.addDisposer(api.onVoiceStreamDelta(handleVoiceStreamDelta));
 api.onLocalVoiceStatus((status) => {
   const current = voiceCapabilities.localTts || {};
   renderLocalVoiceStatus(status);
@@ -5119,7 +4671,7 @@ api.onChatProactiveGreeting(async (payload) => {
     conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
     if (renderInChat) {
       setMood(payload);
-      if (voiceConfig().autoReadReplies && !voiceCallActive) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
+      if (voiceConfig().autoReadReplies) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
     }
   }
   try {

@@ -567,13 +567,11 @@
 
 .ui-chat .history-item:hover,
 .ui-chat .history-item--active { border-color: transparent; background: var(--codex-surface-selected); }
-
 .ui-chat .settings-card,
 .ui-chat .memory-card,
 .ui-chat .shared-life-card,
 .ui-chat .life-card,
 .ui-chat .moments-card,
-.ui-chat .voice-call-card,
 .ui-chat .input-dialog-card {
   color: var(--codex-text);
   border: 1px solid var(--codex-border);

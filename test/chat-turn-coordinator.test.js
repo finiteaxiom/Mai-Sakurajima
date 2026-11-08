@@ -32,29 +32,6 @@ function reply(content) {
   };
 }
 
-function createFakeStream({ resolveOnCancel = true, resolveOnFinish = false } = {}) {
-  const done = deferred();
-  const finished = deferred();
-  const deltas = [];
-  return {
-    done: done.promise,
-    finished: finished.promise,
-    deltas,
-    cancelled: false,
-    finish(content) {
-      this.finalContent = content;
-      finished.resolve();
-      if (resolveOnFinish) done.resolve(true);
-    },
-    push(delta) { deltas.push(delta); },
-    cancel() {
-      this.cancelled = true;
-      if (resolveOnCancel) done.resolve(false);
-    },
-    resolveDone() { done.resolve(true); }
-  };
-}
-
 function createIntegrationHarness(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mai-chat-turn-coordinator-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -150,12 +127,6 @@ function createIntegrationHarness(t) {
       const messages = sanitizeMessages(input?.messages);
       const sessionId = String(input?.sessionId || memoryState.activeSessionId);
       const request = lifecycle.begin({ sessionId, senderId });
-      const rendererRequestId = String(input?.requestId || '');
-      const onDelta = input?.voiceMode === true
-        ? (delta) => {
-            if (request.isCurrent()) coordinator?.handleVoiceStreamDelta({ requestId: rendererRequestId, delta });
-          }
-        : null;
       try {
         return await chatService.send({
           ...input,
@@ -163,8 +134,7 @@ function createIntegrationHarness(t) {
           sessionId,
           requestId: request.requestId,
           signal: request.signal,
-          assertRequestCurrent: request.assertCurrent,
-          onDelta
+          assertRequestCurrent: request.assertCurrent
         });
       } catch (error) {
         if (request.status === 'cancelled' || request.signal.aborted) {
@@ -220,7 +190,7 @@ function createIntegrationHarness(t) {
 
   function queueProvider(handler) { providerHandlers.push(handler); }
 
-  function startRendererTurn({ content, voiceMode = false, stream = null, voiceIsCurrent = () => true, requestId = `renderer-${++idSequence}` }) {
+  function startRendererTurn({ content, voiceMode = false, requestId = `renderer-${++idSequence}` }) {
     const turnConversation = renderedView.conversation;
     const optimisticMessage = { role: 'user', content };
     const optimisticNode = { role: 'user', content };
@@ -242,10 +212,8 @@ function createIntegrationHarness(t) {
       sessionId: coordinator.getState().sessionId,
       requestId,
       conversation: turnConversation,
-      voiceIsCurrent,
       removeOptimistic,
-      removePending,
-      stream
+      removePending
     });
     assert.ok(turn, 'current Renderer should reserve the turn before sending');
     const promise = coordinator.runTurn(turn, {
@@ -284,11 +252,10 @@ function createIntegrationHarness(t) {
   };
 }
 
-test('switching sessions before a signal-ignoring fake provider returns cleans the old view and blocks late deltas', async (t) => {
+test('switching sessions before a signal-ignoring fake provider returns cleans the old view and blocks late replies', async (t) => {
   const harness = createIntegrationHarness(t);
   const providerStarted = deferred();
   const providerGate = deferred();
-  const stream = createFakeStream();
   harness.queueProvider(async (request) => {
     providerStarted.resolve(request);
     await providerGate.promise;
@@ -296,46 +263,18 @@ test('switching sessions before a signal-ignoring fake provider returns cleans t
     request.onDelta?.('A 的迟到增量');
     return reply('A 的迟到回复');
   });
-  const oldTurn = harness.startRendererTurn({ content: 'A 的用户消息', voiceMode: true, stream });
+  const oldTurn = harness.startRendererTurn({ content: 'A 的用户消息', voiceMode: true });
   await providerStarted.promise;
 
   harness.selectChatSession('chat-b');
-  assert.equal(stream.cancelled, true);
   assert.deepEqual(harness.renderedView.nodes.map((node) => node.content || node.role), ['B 的既有记录']);
   assert.deepEqual(harness.renderedView.conversation.map((message) => message.content), ['B 的既有记录']);
 
   providerGate.resolve();
   await oldTurn.promise;
   assert.deepEqual(harness.persistedState().sessions.find((session) => session.id === 'chat-a').messages, []);
-  assert.deepEqual(stream.deltas, []);
   assert.deepEqual(harness.renderedView.projectedReplies, []);
   assert.equal(harness.coordinator.getState().sessionId, 'chat-b');
-});
-
-test('switching while stream.done is pending preserves the committed old session and never projects into the new one', async (t) => {
-  const harness = createIntegrationHarness(t);
-  const providerStarted = deferred();
-  const stream = createFakeStream();
-  harness.queueProvider(async () => {
-    providerStarted.resolve();
-    return reply('A 已提交的回复');
-  });
-  const oldTurn = harness.startRendererTurn({ content: 'A 的已提交用户消息', voiceMode: true, stream });
-  await providerStarted.promise;
-  await stream.finished;
-
-  const savedA = harness.persistedState().sessions.find((session) => session.id === 'chat-a');
-  assert.deepEqual(savedA.messages.map((message) => [message.role, message.content]), [
-    ['user', 'A 的已提交用户消息'],
-    ['assistant', 'A 已提交的回复']
-  ]);
-  harness.selectChatSession('chat-b');
-  await oldTurn.promise;
-
-  assert.equal(stream.cancelled, true);
-  assert.deepEqual(harness.renderedView.nodes.map((node) => node.content || node.role), ['B 的既有记录']);
-  assert.deepEqual(harness.renderedView.projectedReplies, []);
-  assert.equal(harness.persistedState().sessions.find((session) => session.id === 'chat-a').messages.length, 2);
 });
 
 test('confirmed stop removes old optimistic context before resend and an abort-ignoring failure cannot finish the new turn', async (t) => {
@@ -417,70 +356,12 @@ test('session switch invalidates a pending cancellation acknowledgement without 
   assert.equal(harness.rendererStates.length, statesAfterSwitch, 'late cancel completion must not republish state');
 });
 
-test('hangup and redial isolate generations, streams, and late replies', async (t) => {
-  const harness = createIntegrationHarness(t);
-  const firstGate = deferred();
-  const firstStarted = deferred();
-  const secondStarted = deferred();
-  const secondGate = deferred();
-  const firstStream = createFakeStream();
-  const secondStream = createFakeStream({ resolveOnFinish: true });
-  let voiceGeneration = 1;
-  let voiceActive = true;
-  harness.queueProvider(async (request) => {
-    firstStarted.resolve(request);
-    await firstGate.promise;
-    request.onDelta?.('旧通话迟到增量');
-    return reply('旧通话迟到回复');
-  });
-  harness.queueProvider(async (request) => {
-    secondStarted.resolve(request);
-    await secondGate.promise;
-    return reply('新通话回复');
-  });
-  const firstTurn = harness.startRendererTurn({
-    content: '旧通话消息',
-    voiceMode: true,
-    stream: firstStream,
-    voiceIsCurrent: () => voiceActive && voiceGeneration === 1,
-    requestId: 'voice-old'
-  });
-  await firstStarted.promise;
-
-  voiceActive = false;
-  voiceGeneration += 1;
-  const cancelled = await harness.coordinator.cancelCurrentTurn();
-  assert.equal(cancelled.cancelled, true);
-  voiceActive = true;
-  voiceGeneration += 1;
-  const secondTurn = harness.startRendererTurn({
-    content: '新通话消息',
-    voiceMode: true,
-    stream: secondStream,
-    voiceIsCurrent: () => voiceActive && voiceGeneration === 3,
-    requestId: 'voice-new'
-  });
-  await secondStarted.promise;
-
-  firstGate.resolve();
-  await firstTurn.promise;
-  assert.deepEqual(firstStream.deltas, []);
-  assert.equal(harness.coordinator.getState().activeTurnToken, secondTurn.turn.token);
-  assert.equal(harness.coordinator.getVoiceStream(), secondStream);
-
-  secondGate.resolve();
-  await secondTurn.promise;
-  assert.deepEqual(harness.renderedView.projectedReplies, [{ sessionId: 'chat-a', content: '新通话回复' }]);
-  assert.equal(harness.coordinator.getState().busy, false);
-});
-
-test('dispose is idempotent and late cancel, state, reply, and stream completions cannot write the view', async (t) => {
+test('dispose is idempotent and late cancel, state, and reply completions cannot write the view', async (t) => {
   const harness = createIntegrationHarness(t);
   const providerGate = deferred();
   const providerStarted = deferred();
   const getStateGate = deferred();
   const getStateStarted = deferred();
-  const stream = createFakeStream({ resolveOnCancel: false });
   const originalCancel = harness.api.cancelChatRequest;
   harness.api.cancelChatRequest = async () => ({ cancelled: false });
   harness.api.getChatState = async () => {
@@ -494,7 +375,7 @@ test('dispose is idempotent and late cancel, state, reply, and stream completion
   });
   let detachCount = 0;
   harness.coordinator.addDisposer(() => { detachCount += 1; });
-  const turn = harness.startRendererTurn({ content: 'dispose 测试消息', voiceMode: true, stream });
+  const turn = harness.startRendererTurn({ content: 'dispose 测试消息', voiceMode: true });
   await providerStarted.promise;
   const cancel = harness.coordinator.cancelCurrentTurn();
   await getStateStarted.promise;
@@ -511,7 +392,6 @@ test('dispose is idempotent and late cancel, state, reply, and stream completion
   assert.deepEqual(harness.renderedView.nodes, []);
   assert.deepEqual(harness.renderedView.projectedReplies, []);
   assert.equal(harness.rendererStates.length, stateCountBeforeDispose, 'dispose blocks late state/control callbacks');
-  assert.equal(stream.cancelled, true);
   assert.equal(harness.coordinator.getState().disposed, true);
   harness.api.cancelChatRequest = originalCancel;
 });
@@ -540,32 +420,6 @@ test('same-session full hydration invalidates an active view turn and blocks its
   assert.deepEqual(harness.persistedState().sessions.find((session) => session.id === 'chat-a').messages, []);
   assert.deepEqual(harness.renderedView.projectedReplies, []);
   assert.equal(harness.coordinator.getState().busy, false);
-});
-
-test('same-session hydration while stream completion is pending keeps the persisted reply exactly once', async (t) => {
-  const harness = createIntegrationHarness(t);
-  const providerStarted = deferred();
-  const stream = createFakeStream({ resolveOnCancel: false });
-  harness.queueProvider(async () => {
-    providerStarted.resolve();
-    return reply('同会话刷新已提交的回复');
-  });
-  const turn = harness.startRendererTurn({ content: '已经提交的用户消息', voiceMode: true, stream });
-  await providerStarted.promise;
-  await stream.finished;
-
-  harness.coordinator.applyChatState(await harness.api.getChatState());
-  assert.deepEqual(harness.renderedView.conversation.map((message) => [message.role, message.content]), [
-    ['user', '已经提交的用户消息'],
-    ['assistant', '同会话刷新已提交的回复']
-  ]);
-  assert.equal(stream.cancelled, true);
-  stream.resolveDone();
-  await turn.promise;
-
-  assert.deepEqual(harness.renderedView.projectedReplies, []);
-  assert.equal(harness.renderedView.conversation.filter((message) => message.content === '同会话刷新已提交的回复').length, 1);
-  assert.equal(harness.persistedState().sessions.find((session) => session.id === 'chat-a').messages.length, 2);
 });
 
 test('a late same-session getChatState completion cannot replace a newer full hydration', async (t) => {
@@ -677,7 +531,7 @@ test('cancel IPC failure remains visible and lets the original Main request fini
     return reply('取消失败后继续完成的回复');
   });
   harness.api.cancelChatRequest = async () => { throw new Error('cancel IPC failed'); };
-  const turn = harness.startRendererTurn({ content: '继续运行的用户消息', voiceMode: true, stream: createFakeStream() });
+  const turn = harness.startRendererTurn({ content: '继续运行的用户消息', voiceMode: true });
   await providerStarted.promise;
 
   const cancellation = await harness.coordinator.cancelCurrentTurn({ onError: (error) => errors.push(error.message) });

@@ -137,11 +137,6 @@
   border-radius: 18px;
 }
 
-.ui-chat .voice-call-card {
-  width: min(100%, 760px);
-  max-height: calc(100vh - 60px);
-}
-
 .ui-chat .settings-title-row {
   margin-bottom: 24px;
 }
@@ -207,7 +202,6 @@
   color: #73777b !important;
   cursor: default;
 }
-
 .ui-chat .settings-title-row p,
 .ui-chat .voice-settings-title p,
 .ui-chat .local-voice-install small,
@@ -215,9 +209,7 @@
 .ui-chat .voice-slider-grid b,
 .ui-chat .field small,
 .ui-chat .memory-privacy,
-.ui-chat .moments-privacy,
-.ui-chat .voice-call-note,
-.ui-chat .voice-call-hint {
+.ui-chat .moments-privacy {
   color: var(--ui-muted);
 }
 
