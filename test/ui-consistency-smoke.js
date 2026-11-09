@@ -52,7 +52,7 @@ cancelTimer:async()=>{timerCalls++;await new Promise(r=>setTimeout(r,900));if(fa
         await run(chat,`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);await wait(40);
         await check(chat,`${t} ${overlay} restores opener`,`document.getElementById('${overlay}').inert && document.activeElement===document.getElementById('${button}')`);
       }
-      await run(chat,`openSettings('voice')`);await capture(chat,`voice-settings-${t}`);
+      await run(chat,`openSettings('model')`);await capture(chat,`model-settings-${t}`);
       await run(chat,`window.maiSettingsView.select('diagnostics');document.getElementById('diagnostics-refresh').click()`);await wait(80);await capture(chat,`diagnostics-${t}`);
       await check(chat,`${t} diagnostics readable`,`document.getElementById('diagnostics-output').textContent.includes('fixture')`);
       await run(chat,`closeSettings();document.querySelector('[data-mode-tab="agent"]').click()`);await wait(100);

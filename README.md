@@ -2,7 +2,7 @@
 
 > **开发中版本**：当前代码仍在持续开发和验证，接口、数据结构与用户体验可能变更。请勿将当前构建视为稳定发行版，使用前请自行备份数据。
 
-Mai 是本地优先的 Windows 桌面 AI 伴侣。她围绕自然对话、连续会话、长期记忆、麻衣人格、语音与桌宠交互设计，也提供由用户明确操作的日程、专注、知识资料和私人朋友圈功能。
+Mai 是本地优先的 Windows 桌面 AI 伴侣。她围绕自然对话、连续会话、长期记忆、麻衣人格与桌宠交互设计，也提供由用户明确操作的日程、专注、知识资料和私人朋友圈功能。
 
 Mai 不是通用 Agent、Coding Agent 或桌面自动化工具。它提供可选的 Work Mode（工作模式），由内部 Action Runtime / Mai Agent Harness 驱动；Chat Mode 仍是独立的 Companion Runtime（陪伴运行时）。Work 默认关闭，不会自动触发；它只可在用户明确选择的 Work Workspace 内，在单次审批后处理受支持的文件操作，且没有 Shell、Git、代码执行、浏览器自动化或自主任务循环。
 
@@ -26,7 +26,7 @@ npm run dist
 
 - Chat 支持连续会话、流式回复、记忆修正与长期陪伴上下文；
 - DeepSeek 是当前可用的模型 Provider；本地 Provider 只是明确返回 unavailable 的未来接口；
-- 单次语音输入与回复朗读、桌宠、生活助手、知识资料和主动关心均在受控 Main Process 与窄 IPC 边界内运行；不再提供实时语音通话；
+- 桌宠、生活助手、知识资料和主动关心均在受控 Main Process 与窄 IPC 边界内运行；不再提供语音输入、朗读或通话；
 - 知识资料只在用户明确选择文件后导入；前台应用感知默认关闭；
 - Chat 不会访问任意本地文件、执行命令或控制系统。
 - Work Mode 使用独立的 Work Project / WorkSession 与短生命周期 Action Session；它可使用安全本地工具以及经过 WorkspaceSandbox、CapabilityPolicy 和逐次审批保护的 Workspace 读取与文件操作（含受限 `.docx` 新建/追加），不会写入聊天历史或长期记忆。

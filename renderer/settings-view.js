@@ -7,7 +7,7 @@
   let dirty = false;
   let selected = 'appearance';
   let busy = false;
-  // Inert preserves each field's own disabled state (voice/provider dependencies).
+  // Inert preserves each field's own disabled state (provider dependencies).
   // Independent resource buttons and diagnostics remain available.
   const submissionControls = [...overlay.querySelectorAll('input, textarea, select, #save-settings, #test-connection, #preview-greeting, #preview-girlfriend, #discard-settings, #clear-key')];
   function setBusy(value) {

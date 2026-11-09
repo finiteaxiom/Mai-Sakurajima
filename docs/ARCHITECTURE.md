@@ -48,7 +48,7 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | 窗口与托盘 | `window-manager.js` 创建并管理 pet、chat、timer、assistant 窗口、托盘与关闭行为 | Chat、Memory、Persona、Provider 规则 |
 | 桌宠显隐 | `pet-visibility.js` 管理悬停/显隐定时器 | 业务状态与 Prompt |
 | 桌宠衣橱 | `pet-wardrobe.js` 校验固定服装 ID 并调用 Main 保存设置；`renderer/pet-catalog.js` 与 `pet-sprites.js` 提供静态动作目录和共同播放器；详见 [PET-WARDROBE.md](PET-WARDROBE.md) | Chat、Memory、Voice 生命周期、动态脚本或外部资源加载 |
-| 领域 IPC | `voice-ipc.js`、`assistant-ipc.js`、`timer-ipc.js`、`workspace-capability-ipc.js` 只注册各自 channel，并通过窄回调调用 Main 编排 | Prompt、持久化策略、跨域状态规则 |
+| 领域 IPC | `assistant-ipc.js`、`timer-ipc.js`、`workspace-capability-ipc.js` 只注册各自 channel，并通过窄回调调用 Main 编排 | Prompt、持久化策略、跨域状态规则 |
 | Chat Workspace 只读授权 | `workspace-capability-gateway.js` 持有会话绑定、可过期/撤销的 root grant 与单次 context；只允许 `list` / `read`，并委托 `WorkspaceFileService` | Work Project、Agent、写入、递归扫描、持久化文件正文 |
 | Renderer Chat turn 投影 | `renderer/chat-turn-coordinator.js` 管理当前视图 turn token、session/view generation、乐观消息与 pending 清理、取消确认和 Voice 流订阅释放；同 session 完整 hydration 也会废弃旧投影 | Main 请求 AbortController、Provider、持久化与结构化状态候选 |
 | Renderer Work / Explorer 投影 | `renderer/work-renderer-controller.js` 将 Work 数据、运行状态与事件投影到模式/Project/WorkSession/Workspace 身份绑定的视图；`renderer/workspace-explorer-controller.js` 按目录独立加载并校验预览回调；`renderer/work-renderer-bindings.js` 组合两者 | ActionSession / task 的权威状态、取消控制权、Workspace 外访问或超出现有 IPC 的能力 |
@@ -62,14 +62,13 @@ v7.1 的正式 Work 通过 `agent/production-action-runtime.js` 只组合 `MaiAg
 | Assistant 状态 | `life-assistant.js` 负责 `assistant` 的默认值、规范化、专注、简报、应用使用、提醒台账和 Promise 状态变换 | 跨域 life item 写入、保存、广播、调度 |
 | 记忆与生活算法 | `memory-engine.js`、`memory-extractor.js`、`shared-life.js`、`life-hub.js`、`continuity-engine.js`、`moments.js` 提供提取、选择、合并和规范化逻辑 | Provider、窗口、IPC 注册 |
 | 知识资料 | `knowledge-engine.js` 与 `knowledge-importer.js` 管理用户明确导入的本地资料与检索索引 | 后台任意扫描 |
-| 语音 | `voice-service.js`、`local-tts-service.js`、`voice-emotion.js` | Chat/Memory 写入 |
 | 持久化与备份 | `storage.js` 固定数据目录；`json-persistence.js` 提供可传播错误的同目录临时文件替换；`file-set-transaction.js` 管理多文件恢复和启动回滚；Main 在启动事务恢复成功前不加载产品数据，事务回滚失败后冻结 Memory、Settings、Knowledge、Work、自定义资源和后台保存入口；`automatic-backup-service.js` 写每日备份且保留既有备份；`backup-engine.js` 提供版本化备份、恢复与导出校验 | 业务决策 |
 
 `main.js` 仍直接注册其余 chat、settings、knowledge、backup、window 与 proactive IPC。这是当前实现，不应被文档描述成已经完全模块化。
 
 ## IPC 与副作用
 
-语音能力仅保留用户点击触发的单次语音输入、语气分析与回复朗读。实时语音通话已移除：没有通话窗口、持续收听循环或 `chat:voice-stream-delta` 事件。单次输入仍通过 `voice:*` 窄 IPC 和既有 Chat 调用链处理；本地语音引擎、设置及历史消息保持兼容。
+语音功能已全部移除：没有语音输入、朗读、声音分析、通话、语音设置或 `voice:*` IPC，也不加载本地语音引擎。Chat 维持原有文字调用链；窗口拒绝媒体权限。旧 settings 中的 voice 字段仅作不启用、不下发、不改写的兼容数据保留，聊天历史和用户数据路径不变。
 
 Preload 只暴露预定义 channel；Renderer 不得构造任意文件路径、读取 Secret 或绕过 Main。专门的 voice、assistant、timer IPC 注册器只接收它们需要的回调。其余 channel 暂由 `main.js#registerIpc()` 注册。
 

@@ -10,7 +10,6 @@ const assistantButton = document.getElementById('assistant-button');
 const lifeButton = document.getElementById('life-button');
 const sharedLifeButton = document.getElementById('shared-life-button');
 const momentsButton = document.getElementById('moments-button');
-const voiceInputButton = document.getElementById('voice-input-button');
 const historyButton = document.getElementById('history-button');
 const newChatButton = document.getElementById('new-chat-button');
 const knowledgeButton = document.getElementById('knowledge-button');
@@ -133,23 +132,6 @@ const proactiveIntervalMinutesInput = document.getElementById('proactive-interva
 const proactiveDailyLimitInput = document.getElementById('proactive-daily-limit');
 const girlfriendEnabledInput = document.getElementById('girlfriend-enabled');
 const momentsEnabledInput = document.getElementById('moments-enabled');
-const voiceAutoReadInput = document.getElementById('voice-auto-read');
-const voiceEngineSelect = document.getElementById('voice-engine');
-const voiceNameSelect = document.getElementById('voice-name');
-const voiceCultureSelect = document.getElementById('voice-culture');
-const voiceRateInput = document.getElementById('voice-rate');
-const voicePitchInput = document.getElementById('voice-pitch');
-const voiceVolumeInput = document.getElementById('voice-volume');
-const voiceRateValue = document.getElementById('voice-rate-value');
-const voicePitchValue = document.getElementById('voice-pitch-value');
-const voiceVolumeValue = document.getElementById('voice-volume-value');
-const voiceCapabilityStatus = document.getElementById('voice-capability-status');
-const testVoiceButton = document.getElementById('test-voice');
-const installLocalVoiceButton = document.getElementById('install-local-voice');
-const localVoiceTitle = document.getElementById('local-voice-title');
-const localVoiceDetail = document.getElementById('local-voice-detail');
-const localVoiceProgress = document.getElementById('local-voice-progress');
-const localVoiceProgressBar = document.getElementById('local-voice-progress-bar');
 const girlfriendIntervalMinutesInput = document.getElementById('girlfriend-interval-minutes');
 const girlfriendMaxFollowUpsInput = document.getElementById('girlfriend-max-follow-ups');
 const weatherEnabledInput = document.getElementById('weather-enabled');
@@ -333,32 +315,6 @@ const LIFE_KIND_LABELS = {
   anniversary: '纪念日'
 };
 
-const LOCAL_VOICE_STAGE_LABELS = {
-  prepare: '准备安装',
-  'download-runtime': '下载运行环境',
-  'install-runtime': '安装运行环境',
-  'install-dependencies': '安装语音组件',
-  'download-model': '下载情绪语音模型',
-  verify: '验证模型',
-  complete: '安装完成'
-};
-
-const LOCAL_VOICE_DETAIL_LABELS = {
-  'checking-runtime': '正在检查 Python 3.10 本地运行环境…',
-  'downloading-python': '正在从 Python.org 下载 Python 3.10（约 28 MB）…',
-  'installing-private-python': '正在安装独立运行环境，不会改动系统 Python…',
-  'upgrading-pip': '正在升级本地安装工具…',
-  'downloading-pytorch': '正在下载 PyTorch 与 CUDA 推理组件；这个文件最大，请耐心等待…',
-  'installing-gpu-runtime': '正在安装 GPU 推理组件；下载时间取决于网络速度…',
-  'installing-sensevoice-runtime': '正在安装本地语气感知组件…',
-  'checking-cosyvoice-base-model': '正在检查并复用旧版 CosyVoice 女声模型…',
-  'downloading-cosyvoice-model': '正在下载基础 CosyVoice 女声模型（约 2.62 GB，可断点续传）…',
-  'downloading-emotion-voice-model': '正在下载 CosyVoice 情绪女声模型（约 2.3 GB，可断点续传）…',
-  'downloading-sensevoice-model': '正在下载 SenseVoice 语气感知模型（约 1 GB，可断点续传）…',
-  'verifying-model': '正在验证模型文件与 CUDA 支持…',
-  'local-voice-ready': '本地情绪女声与语气感知已经就绪。'
-};
-
 const PORTRAIT_ACTIONS = new Set(['idle', 'wave', 'jump', 'love', 'angry', 'sleep', 'lazy', 'study', 'work', 'snack']);
 
 const MAX_RENDER_CONTEXT_MESSAGES = 1600;
@@ -376,15 +332,6 @@ let chatConfig = {
   girlfriendIntervalMinutes: 20,
   girlfriendMaxFollowUps: 4,
   momentsEnabled: true,
-  voice: {
-    autoReadReplies: false,
-    engine: 'local',
-    culture: 'zh-CN',
-    voiceName: '',
-    rate: 1,
-    pitch: 1,
-    volume: 1
-  },
   weatherEnabled: false,
   weatherCity: ''
 };
@@ -412,18 +359,6 @@ let chatWorkspaceStatus = { granted: false, operations: [] };
 let pendingWorkspaceRequest = null;
 let activeAvatarTarget = null;
 let portraitReactionTimer = null;
-let voiceCapabilities = {
-  available: false,
-  recognizers: [],
-  defaultCulture: 'zh-CN',
-  localTts: { installed: false, ready: false, state: 'stopped' }
-};
-let speechVoices = [];
-let activeSpeechAudio = null;
-let activeSpeechCancel = null;
-let speechGeneration = 0;
-let voiceInputListening = false;
-let voiceInputMonitor = null;
 let inputDialogState = null;
 let conversationContextSessionId = '';
 let conversationContextKind = 'chat';
@@ -835,604 +770,6 @@ async function deleteConversationSession(session, kind = 'chat', workIdentity = 
   }
 }
 
-function voiceConfig() {
-  return {
-    autoReadReplies: chatConfig.voice?.autoReadReplies === true,
-    engine: chatConfig.voice?.engine === 'system' ? 'system' : 'local',
-    culture: String(chatConfig.voice?.culture || 'zh-CN'),
-    voiceName: String(chatConfig.voice?.voiceName || ''),
-    rate: Math.max(0.7, Math.min(1.4, Number(chatConfig.voice?.rate) || 1)),
-    pitch: Math.max(0.7, Math.min(1.3, Number(chatConfig.voice?.pitch) || 1)),
-    volume: Math.max(0.1, Math.min(1, Number(chatConfig.voice?.volume) || 1))
-  };
-}
-
-function cleanSpeechText(value) {
-  return String(value || '')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/[`*_>#~]/g, '')
-    .replace(/https?:\/\/\S+/g, '链接')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 1800);
-}
-
-const RENDER_VOICE_STYLES = {
-  neutral: {
-    action: 'wave',
-    rate: 1,
-    instruction: '请用自然、亲近、像面对面聊天一样的中文女声表达，避免播音腔和机械朗读感。'
-  },
-  happy: {
-    action: 'jump',
-    rate: 1.04,
-    instruction: '请用开心、明亮、带一点自然笑意的中文女声表达，语气轻快但不要夸张。'
-  },
-  curious: {
-    action: 'wave',
-    rate: 1.02,
-    instruction: '请用好奇、灵动、略微上扬的中文女声表达，像正在认真等对方继续说。'
-  },
-  shy: {
-    action: 'love',
-    rate: 0.96,
-    instruction: '请用略带害羞、轻柔、亲近的中文女声表达，停顿自然，不要故意卖萌。'
-  },
-  concerned: {
-    action: 'wave',
-    rate: 0.93,
-    instruction: '请用温柔、关心、稍慢一点的中文女声表达，像在认真安慰亲近的人。'
-  },
-  angry: {
-    action: 'angry',
-    rate: 1.03,
-    instruction: '请用克制但能听出不满的中文女声表达，语气坚定，不要吼叫或戏剧化。'
-  },
-  sleepy: {
-    action: 'lazy',
-    rate: 0.9,
-    instruction: '请用轻柔、慵懒、略带困意的中文女声表达，音量稍低，停顿放松。'
-  },
-  focused: {
-    action: 'work',
-    rate: 0.98,
-    instruction: '请用清晰、沉稳、认真但不疏离的中文女声表达，重点词稍微加强。'
-  }
-};
-
-function rendererTextEmotion(text, fallback = 'neutral') {
-  const content = String(text || '');
-  if (/(笨蛋|不许|生气|不高兴|讨厌|哼[。！!]?)/.test(content)) return 'angry';
-  if (/(抱抱|别怕|没关系|我陪你|辛苦了|担心|难过|好好休息)/.test(content)) return 'concerned';
-  if (/(喜欢你|爱你|亲一下|才没有|害羞|想你)/.test(content)) return 'shy';
-  if (/(哈哈|太好啦|真棒|开心|好呀|当然可以)/.test(content)) return 'happy';
-  if (/(工作|学习|复习|考试|代码|项目|计划|专注)/.test(content)) return 'focused';
-  if (/(困了|晚安|睡觉|好困)/.test(content)) return 'sleepy';
-  if (/[？?]/.test(content)) return 'curious';
-  return RENDER_VOICE_STYLES[fallback] ? fallback : 'neutral';
-}
-
-function planRendererSpeechStyle(text, options = {}) {
-  const aliases = { playful: 'happy', upset: 'angry', love: 'shy' };
-  const requested = aliases[options.emotion] || options.emotion;
-  const senseEmotion = aliases[options.voiceProfile?.senseEmotion]
-    || options.voiceProfile?.senseEmotion;
-  const acousticFallback = options.voiceProfile?.vocalTone === 'urgent'
-    ? 'concerned'
-    : options.voiceProfile?.vocalTone === 'energetic'
-      ? 'happy'
-      : options.voiceProfile?.vocalTone === 'soft'
-        ? 'shy'
-        : 'neutral';
-  const fallback = RENDER_VOICE_STYLES[senseEmotion] ? senseEmotion : acousticFallback;
-  const emotion = RENDER_VOICE_STYLES[requested]
-    ? requested
-    : rendererTextEmotion(text, fallback);
-  const style = RENDER_VOICE_STYLES[emotion] || RENDER_VOICE_STYLES.neutral;
-  const baseRate = Number(options.baseRate) || 1;
-  return {
-    emotion,
-    action: style.action,
-    instruction: style.instruction,
-    rate: Math.max(0.75, Math.min(1.3, baseRate * style.rate))
-  };
-}
-
-function writeAscii(view, offset, text) {
-  for (let index = 0; index < text.length; index += 1) {
-    view.setUint8(offset + index, text.charCodeAt(index));
-  }
-}
-
-function floatSamplesToWavBase64(chunks, inputSampleRate) {
-  const sourceLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  if (!sourceLength) return '';
-  const source = new Float32Array(sourceLength);
-  let sourceOffset = 0;
-  for (const chunk of chunks) {
-    source.set(chunk, sourceOffset);
-    sourceOffset += chunk.length;
-  }
-  const outputRate = 16000;
-  const ratio = Math.max(1, inputSampleRate / outputRate);
-  const outputLength = Math.floor(source.length / ratio);
-  const wav = new ArrayBuffer(44 + outputLength * 2);
-  const view = new DataView(wav);
-  writeAscii(view, 0, 'RIFF');
-  view.setUint32(4, 36 + outputLength * 2, true);
-  writeAscii(view, 8, 'WAVE');
-  writeAscii(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, outputRate, true);
-  view.setUint32(28, outputRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeAscii(view, 36, 'data');
-  view.setUint32(40, outputLength * 2, true);
-  for (let index = 0; index < outputLength; index += 1) {
-    const start = Math.floor(index * ratio);
-    const end = Math.min(source.length, Math.floor((index + 1) * ratio));
-    let total = 0;
-    for (let cursor = start; cursor < end; cursor += 1) total += source[cursor];
-    const sample = Math.max(-1, Math.min(1, total / Math.max(1, end - start)));
-    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-  }
-  const bytes = new Uint8Array(wav);
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
-  return window.btoa(binary);
-}
-
-async function ensureVoiceInputMonitor() {
-  if (voiceInputMonitor) return voiceInputMonitor;
-  if (!navigator.mediaDevices?.getUserMedia) return null;
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      channelCount: 1
-    },
-    video: false
-  });
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  const context = new AudioContextClass();
-  await context.resume();
-  const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(2048, 1, 1);
-  const silentOutput = context.createGain();
-  silentOutput.gain.value = 0;
-  const monitor = {
-    stream,
-    context,
-    processor,
-    capturing: false,
-    chunks: [],
-    energyTotal: 0,
-    energySquareTotal: 0,
-    energyPeak: 0,
-    energyFrames: 0,
-    speechFrames: 0,
-    captureStartedAt: 0,
-  };
-  processor.onaudioprocess = (event) => {
-    const samples = event.inputBuffer.getChannelData(0);
-    let squareTotal = 0;
-    let peak = 0;
-    for (let index = 0; index < samples.length; index += 1) {
-      const absolute = Math.abs(samples[index]);
-      squareTotal += samples[index] * samples[index];
-      if (absolute > peak) peak = absolute;
-    }
-    const rms = Math.sqrt(squareTotal / Math.max(1, samples.length));
-    if (monitor.capturing) {
-      monitor.chunks.push(new Float32Array(samples));
-      monitor.energyTotal += rms;
-      monitor.energySquareTotal += rms * rms;
-      monitor.energyPeak = Math.max(monitor.energyPeak, peak);
-      monitor.energyFrames += 1;
-      if (rms >= 0.015) monitor.speechFrames += 1;
-    }
-  };
-  source.connect(processor);
-  processor.connect(silentOutput);
-  silentOutput.connect(context.destination);
-  voiceInputMonitor = monitor;
-  return monitor;
-}
-
-function beginVoiceCapture() {
-  const monitor = voiceInputMonitor;
-  if (!monitor) return false;
-  monitor.chunks = [];
-  monitor.energyTotal = 0;
-  monitor.energySquareTotal = 0;
-  monitor.energyPeak = 0;
-  monitor.energyFrames = 0;
-  monitor.speechFrames = 0;
-  monitor.captureStartedAt = Date.now();
-  monitor.capturing = true;
-  return true;
-}
-
-function finishVoiceCapture() {
-  const monitor = voiceInputMonitor;
-  if (!monitor || !monitor.capturing) return null;
-  monitor.capturing = false;
-  const frames = Math.max(1, monitor.energyFrames);
-  const averageEnergy = monitor.energyTotal / frames;
-  const variance = Math.max(0, monitor.energySquareTotal / frames - averageEnergy * averageEnergy);
-  const durationMs = Math.max(0, Date.now() - monitor.captureStartedAt);
-  const vocalTone = averageEnergy >= 0.075 || Math.sqrt(variance) >= 0.055
-    ? 'urgent'
-    : averageEnergy >= 0.04
-      ? 'energetic'
-      : averageEnergy <= 0.018
-        ? 'soft'
-        : 'calm';
-  const capture = {
-    averageEnergy,
-    peakEnergy: monitor.energyPeak,
-    variability: Math.sqrt(variance),
-    speechRatio: monitor.speechFrames / frames,
-    durationMs,
-    vocalTone,
-    audioBase64: ''
-  };
-  if (durationMs >= 250 && monitor.chunks.length) {
-    capture.audioBase64 = floatSamplesToWavBase64(monitor.chunks, monitor.context.sampleRate);
-  }
-  monitor.chunks = [];
-  return capture;
-}
-
-async function enrichVoiceProfile(capture) {
-  if (!capture) return {};
-  const profile = { ...capture };
-  delete profile.audioBase64;
-  if (!capture.audioBase64 || !voiceCapabilities.localTts?.enhanced) return profile;
-  try {
-    const result = await Promise.race([
-      api.analyzeVoiceAudio({ audioBase64: capture.audioBase64, mimeType: 'audio/wav' }),
-      waitFor(4000).then(() => null)
-    ]);
-    if (result?.available) {
-      profile.senseEmotion = result.emotion || '';
-      profile.senseText = result.text || '';
-      profile.voiceEvents = result.events || [];
-    }
-  } catch {
-    // Acoustic cues still work when the optional semantic analysis cannot finish in time.
-  }
-  return profile;
-}
-
-async function disposeVoiceInputMonitor() {
-  const monitor = voiceInputMonitor;
-  voiceInputMonitor = null;
-  if (!monitor) return;
-  monitor.capturing = false;
-  monitor.processor.onaudioprocess = null;
-  monitor.stream.getTracks().forEach((track) => track.stop());
-  await monitor.context.close().catch(() => {});
-}
-
-function updateVoiceSliderLabels() {
-  voiceRateValue.textContent = `${Number(voiceRateInput.value || 1).toFixed(2)}×`;
-  voicePitchValue.textContent = `${Number(voicePitchInput.value || 1).toFixed(2)}×`;
-  voiceVolumeValue.textContent = `${Math.round(Number(voiceVolumeInput.value || 1) * 100)}%`;
-}
-
-function refreshSpeechVoices() {
-  if (!('speechSynthesis' in window)) {
-    speechVoices = [];
-    voiceNameSelect.innerHTML = '<option value="">系统不支持朗读</option>';
-    voiceNameSelect.disabled = true;
-    return;
-  }
-  speechVoices = window.speechSynthesis.getVoices();
-  const preferredName = voiceNameSelect.value || voiceConfig().voiceName;
-  voiceNameSelect.innerHTML = '';
-  const defaultOption = document.createElement('option');
-  defaultOption.value = '';
-  defaultOption.textContent = '系统默认声音';
-  voiceNameSelect.appendChild(defaultOption);
-  for (const voice of speechVoices
-    .slice()
-    .sort((left, right) => {
-      const leftChinese = /^zh/i.test(left.lang) ? 0 : 1;
-      const rightChinese = /^zh/i.test(right.lang) ? 0 : 1;
-      return leftChinese - rightChinese || left.name.localeCompare(right.name, 'zh-CN');
-    })) {
-    const option = document.createElement('option');
-    option.value = voice.name;
-    option.textContent = `${voice.name} · ${voice.lang}`;
-    voiceNameSelect.appendChild(option);
-  }
-  voiceNameSelect.disabled = false;
-  voiceNameSelect.value = speechVoices.some((voice) => voice.name === preferredName)
-    ? preferredName
-    : '';
-  updateVoiceEngineControls();
-}
-
-function selectedSpeechVoice() {
-  const name = voiceNameSelect.value || voiceConfig().voiceName;
-  if (name) {
-    const selected = speechVoices.find((voice) => voice.name === name);
-    if (selected) return selected;
-  }
-  return speechVoices.find((voice) => /^zh[-_]/i.test(voice.lang)) || null;
-}
-
-function stopSpeaking() {
-  speechGeneration += 1;
-  const cancel = activeSpeechCancel;
-  activeSpeechCancel = null;
-  if (cancel) cancel();
-  if (activeSpeechAudio) {
-    activeSpeechAudio.pause();
-    activeSpeechAudio.removeAttribute('src');
-    activeSpeechAudio.load();
-    activeSpeechAudio = null;
-  }
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-  }
-}
-
-function speakSystemText(content, config, generation) {
-  if (!('speechSynthesis' in window)) {
-    return Promise.resolve(false);
-  }
-  const utterance = new SpeechSynthesisUtterance(content);
-  const selected = selectedSpeechVoice();
-  if (selected) {
-    utterance.voice = selected;
-    utterance.lang = selected.lang;
-  } else {
-    utterance.lang = config.culture;
-  }
-  utterance.rate = config.rate;
-  utterance.pitch = config.pitch;
-  utterance.volume = config.volume;
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let speechTimeout = null;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(speechTimeout);
-      if (activeSpeechCancel === cancelSpeech) activeSpeechCancel = null;
-      callback(value);
-    };
-    const cancelSpeech = () => finish(resolve, false);
-    activeSpeechCancel = cancelSpeech;
-    utterance.onend = () => finish(resolve, generation === speechGeneration);
-    utterance.onerror = (event) => {
-      if (['interrupted', 'canceled'].includes(event.error)) {
-        finish(resolve, false);
-      } else {
-        finish(reject, new Error('Windows 没能朗读这条回复，请在语音设置中换一个声音。'));
-      }
-    };
-    window.speechSynthesis.speak(utterance);
-    speechTimeout = setTimeout(() => {
-      stopSpeaking();
-      finish(resolve, false);
-    }, Math.max(15000, Math.min(90000, content.length * 450)));
-  });
-}
-
-function playLocalSpeech(result, config, generation) {
-  if (!result?.ok || !result.audioBase64 || generation !== speechGeneration) {
-    return Promise.resolve(false);
-  }
-  const audio = new Audio(`data:${result.mimeType || 'audio/wav'};base64,${result.audioBase64}`);
-  activeSpeechAudio = audio;
-  audio.volume = config.volume;
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      if (activeSpeechAudio === audio) activeSpeechAudio = null;
-      if (activeSpeechCancel === cancelSpeech) activeSpeechCancel = null;
-      callback(value);
-    };
-    const cancelSpeech = () => finish(resolve, false);
-    activeSpeechCancel = cancelSpeech;
-    audio.addEventListener('ended', () => finish(resolve, generation === speechGeneration), { once: true });
-    audio.addEventListener('error', () => finish(reject, new Error('本地女声音频无法播放。')), { once: true });
-    audio.play().catch((error) => finish(reject, error));
-  });
-}
-
-async function speakText(text, options = {}) {
-  const content = cleanSpeechText(text);
-  if (!content) {
-    return false;
-  }
-  stopSpeaking();
-  const generation = speechGeneration;
-  const config = options.config || voiceConfig();
-  const style = planRendererSpeechStyle(content, {
-    emotion: options.emotion,
-    voiceProfile: options.voiceProfile,
-    baseRate: config.rate
-  });
-  setMood({ emotion: style.emotion, action: style.action });
-  if (config.engine !== 'system') {
-    try {
-      const result = await api.synthesizeLocalVoice({
-        text: content,
-        rate: style.rate,
-        emotion: style.emotion,
-        instruction: style.instruction
-      });
-      return await playLocalSpeech(result, config, generation);
-    } catch (error) {
-      if (generation !== speechGeneration) return false;
-      const message = errorText(error);
-      if (!/尚未安装/.test(message)) {
-        showNotice(`${message} 已临时改用系统备用声音。`);
-      }
-    }
-  }
-  if (generation !== speechGeneration) return false;
-  return speakSystemText(content, config, generation);
-}
-
-function renderLocalVoiceStatus(status = {}) {
-  voiceCapabilities.localTts = status;
-  const progress = status.installProgress || {};
-  const installing = status.state === 'installing';
-  localVoiceProgress.classList.toggle('local-voice-progress--hidden', !installing);
-  localVoiceProgressBar.style.width = `${Math.max(0, Math.min(100, Number(progress.percent) || 0))}%`;
-  installLocalVoiceButton.disabled = installing || (status.enhanced && !status.error);
-
-  if (installing) {
-    const stage = LOCAL_VOICE_STAGE_LABELS[progress.stage] || '正在安装';
-    const detail = LOCAL_VOICE_DETAIL_LABELS[progress.detail]
-      || progress.detail
-      || '请保持程序开启；已下载内容会保留。';
-    localVoiceTitle.textContent = `${stage} · ${Math.round(Number(progress.percent) || 0)}%`;
-    localVoiceDetail.textContent = detail;
-    installLocalVoiceButton.textContent = '安装中…';
-  } else if (status.needsUpgrade) {
-    localVoiceTitle.textContent = '可以升级为情绪朗读';
-    localVoiceDetail.textContent = status.error
-      || '会保留并复用现有女声，只需补充约 3.3 GB 的情绪语音与语气感知模型。';
-    installLocalVoiceButton.textContent = '升级情绪语音';
-    installLocalVoiceButton.disabled = false;
-  } else if (status.ready && status.enhanced) {
-    localVoiceTitle.textContent = 'CosyVoice 情绪女声与 SenseVoice 已就绪';
-    localVoiceDetail.textContent = `${status.runtime?.device || '本地设备'} · 支持语气感知、分句流式朗读和说话打断；音频不会上传。`;
-    installLocalVoiceButton.textContent = '已安装';
-  } else if (status.installed && status.state === 'starting') {
-    localVoiceTitle.textContent = '正在加载本地女声模型…';
-    localVoiceDetail.textContent = '首次发声需要等待模型载入显卡，之后会明显更快。';
-    installLocalVoiceButton.textContent = '已安装';
-  } else if (status.installed) {
-    localVoiceTitle.textContent = status.error ? '本地情绪语音需要重新加载' : '本地情绪语音已安装';
-    localVoiceDetail.textContent = status.error || '第一次朗读时会自动载入模型，通常需要十几秒。';
-    installLocalVoiceButton.textContent = status.error ? '重试加载' : '已安装';
-    installLocalVoiceButton.disabled = !status.error;
-  } else {
-    localVoiceTitle.textContent = status.error ? '本地情绪语音安装未完成' : '尚未安装本地情绪语音';
-    localVoiceDetail.textContent = status.error || '全新安装约下载 11 GB，请预留至少 16 GB；完成后可断网使用。';
-    installLocalVoiceButton.textContent = status.error ? '重试安装' : '安装情绪语音';
-    installLocalVoiceButton.disabled = false;
-  }
-}
-
-function updateVoiceEngineControls() {
-  const local = voiceEngineSelect.value !== 'system';
-  voiceNameSelect.disabled = local;
-  voicePitchInput.disabled = local;
-}
-
-async function installLocalVoice() {
-  const status = voiceCapabilities.localTts || {};
-  installLocalVoiceButton.disabled = true;
-  if (status.installed && !status.needsUpgrade) {
-    try {
-      voiceEngineSelect.value = 'local';
-      updateVoiceEngineControls();
-      await testVoice();
-      await refreshVoiceCapabilities(true);
-    } finally {
-      renderLocalVoiceStatus(voiceCapabilities.localTts);
-    }
-    return;
-  }
-  setSettingsStatus(status.needsUpgrade
-    ? '正在补充情绪语音与语气感知模型，已有女声会保留并复用。'
-    : '正在安装高质量本地情绪语音，请保持程序开启。');
-  try {
-    const installedStatus = await api.installLocalVoice();
-    renderLocalVoiceStatus(installedStatus);
-    voiceEngineSelect.value = 'local';
-    updateVoiceEngineControls();
-    setSettingsStatus('本地情绪语音安装完成。以后覆盖升级会自动保留并复用。');
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
-    const latest = await api.getLocalVoiceStatus().catch(() => null);
-    if (latest) renderLocalVoiceStatus(latest);
-  }
-}
-
-async function refreshVoiceCapabilities(force = false) {
-  if (force) {
-    voiceCapabilityStatus.textContent = '正在重新检查本地语音组件…';
-  }
-  try {
-    voiceCapabilities = await api.getVoiceCapabilities();
-    renderLocalVoiceStatus(voiceCapabilities.localTts || {});
-    voiceCultureSelect.innerHTML = '';
-    const recognizers = Array.isArray(voiceCapabilities.recognizers)
-      ? voiceCapabilities.recognizers
-      : [];
-    for (const recognizer of recognizers) {
-      const option = document.createElement('option');
-      option.value = recognizer.culture;
-      option.textContent = `${recognizer.culture === 'zh-CN' ? '普通话（简体中文）' : recognizer.culture} · ${recognizer.name}`;
-      voiceCultureSelect.appendChild(option);
-    }
-    if (!recognizers.length) {
-      const option = document.createElement('option');
-      option.value = 'zh-CN';
-      option.textContent = '未找到语音识别器';
-      voiceCultureSelect.appendChild(option);
-    }
-    const wanted = voiceConfig().culture;
-    voiceCultureSelect.value = recognizers.some((item) => item.culture === wanted)
-      ? wanted
-      : voiceCapabilities.defaultCulture || recognizers[0]?.culture || 'zh-CN';
-    voiceCultureSelect.disabled = !voiceCapabilities.available;
-    const localStatus = voiceCapabilities.localTts || {};
-    const ttsLabel = localStatus.enhanced && localStatus.ready
-      ? `CosyVoice 情绪女声已就绪（${localStatus.runtime?.device || '本地'}）`
-      : localStatus.needsUpgrade
-        ? '旧版女声可用，可升级情绪朗读'
-        : localStatus.installed
-          ? 'CosyVoice 已安装，将在首次朗读时载入'
-          : 'CosyVoice 尚未安装，暂用系统备用声音';
-    voiceCapabilityStatus.textContent = voiceCapabilities.available
-      ? `本地语音识别已就绪 · ${recognizers.length} 个语言组件；${ttsLabel}。`
-      : `${voiceCapabilities.error || '当前 Windows 语音识别不可用。'}；${ttsLabel}。`;
-    voiceCapabilityStatus.classList.toggle('voice-capability-status--error', !voiceCapabilities.available);
-  } catch (error) {
-    voiceCapabilities = { available: false, recognizers: [] };
-    voiceCapabilityStatus.textContent = errorText(error);
-    voiceCapabilityStatus.classList.add('voice-capability-status--error');
-  }
-}
-
-async function testVoice() {
-  testVoiceButton.disabled = true;
-  try {
-    await speakText('听得到吗？以后就可以这样和我说话了。', {
-      config: {
-        ...voiceConfig(),
-        engine: voiceEngineSelect.value === 'system' ? 'system' : 'local',
-        rate: Number(voiceRateInput.value) || 1,
-        pitch: Number(voicePitchInput.value) || 1,
-        volume: Number(voiceVolumeInput.value) || 1
-      }
-    });
-    setSettingsStatus('语音试听完成。');
-  } catch (error) {
-    setSettingsStatus(errorText(error), true);
-  } finally {
-    testVoiceButton.disabled = false;
-  }
-}
-
 function setConnection(config) {
   chatConfig = config;
   if (config.credentialStorageWarning) setSettingsStatus(config.credentialStorageWarning, true);
@@ -1687,21 +1024,6 @@ function populateSettings() {
   girlfriendMaxFollowUpsInput.disabled = !girlfriendEnabledInput.checked;
   previewGirlfriendButton.disabled = !girlfriendEnabledInput.checked;
   momentsEnabledInput.checked = chatConfig.momentsEnabled !== false;
-  const currentVoice = voiceConfig();
-  voiceAutoReadInput.checked = currentVoice.autoReadReplies;
-  voiceEngineSelect.value = currentVoice.engine;
-  voiceRateInput.value = String(currentVoice.rate);
-  voicePitchInput.value = String(currentVoice.pitch);
-  voiceVolumeInput.value = String(currentVoice.volume);
-  updateVoiceSliderLabels();
-  refreshSpeechVoices();
-  voiceNameSelect.value = speechVoices.some((voice) => voice.name === currentVoice.voiceName)
-    ? currentVoice.voiceName
-    : '';
-  if (Array.from(voiceCultureSelect.options).some((option) => option.value === currentVoice.culture)) {
-    voiceCultureSelect.value = currentVoice.culture;
-  }
-  updateVoiceEngineControls();
   weatherEnabledInput.checked = chatConfig.weatherEnabled === true;
   weatherCityInput.value = chatConfig.weatherCity || '';
   weatherCityInput.disabled = !weatherEnabledInput.checked;
@@ -2018,66 +1340,6 @@ async function sendMomentComment(postId, rawContent) {
 
 function waitFor(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function startVoiceInput() {
-  if (voiceInputListening) {
-    await api.stopVoiceListening();
-    return;
-  }
-  if (chatTurnCoordinator.getState().busy) {
-    showNotice('请先等待当前回复结束。');
-    return;
-  }
-  if (!chatConfig.configured) {
-    showNotice('请先设置 DeepSeek API Key，再使用语音聊天。');
-    openSettings();
-    return;
-  }
-  if (!voiceCapabilities.available) {
-    await refreshVoiceCapabilities(true);
-    if (!voiceCapabilities.available) {
-      showNotice(voiceCapabilityStatus.textContent);
-      return;
-    }
-  }
-
-  voiceInputListening = true;
-  voiceInputButton.classList.add('voice-input-button--listening');
-  voiceInputButton.title = '点击停止聆听';
-  showNotice('正在听你说话…说完后停顿一下即可发送。');
-  let capture = null;
-  try {
-    await ensureVoiceInputMonitor().catch(() => null);
-    beginVoiceCapture();
-    const result = await api.listenVoice({
-      culture: voiceConfig().culture,
-      timeoutSeconds: 28
-    });
-    capture = finishVoiceCapture();
-    if (result?.canceled) {
-      hideNotice();
-      return;
-    }
-    const voiceProfile = await enrichVoiceProfile(capture);
-    const recognizedText = String(result?.text || voiceProfile.senseText || '').trim();
-    if (!recognizedText) {
-      showNotice('这次没有听清。靠近麦克风，再试一次吧。');
-      return;
-    }
-    messageInput.value = recognizedText;
-    resizeInput();
-    await sendMessage({ voiceMode: true, voiceProfile });
-  } catch (error) {
-    showNotice(errorText(error));
-  } finally {
-    if (!capture) finishVoiceCapture();
-    disposeVoiceInputMonitor();
-    voiceInputListening = false;
-    voiceInputButton.classList.remove('voice-input-button--listening');
-    voiceInputButton.title = '说一句话';
-    voiceInputButton.disabled = false;
-  }
 }
 
 function setMindMeter(bar, valueElement, value) {
@@ -2401,7 +1663,6 @@ function renderCompanionWorkspace() {
   const chatTurnPending = Boolean(turnState.activeTurnToken);
   sendButton.textContent = turnState.cancellationPending ? '取消中…' : chatTurnPending ? '停止' : '发送';
   sendButton.setAttribute('aria-label', turnState.cancellationPending ? '正在取消当前回复' : chatTurnPending ? '停止当前回复' : '发送');
-  voiceInputButton.hidden = false;
   messageInput.disabled = turnState.busy;
   sendButton.disabled = turnState.cancellationPending;
   const activeSession = runtimeSessions.find((session) => session.id === activeChatSessionId());
@@ -2412,7 +1673,7 @@ function renderCompanionWorkspace() {
     ? '本地模型'
     : (chatConfig.model === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : 'DeepSeek V4 Flash');
   conversationMemoryBadge.textContent = chatConfig.memoryEnabled === false ? '记忆已关闭' : '记忆已开启';
-  setCapabilityChips(['长期记忆', '现实时间', '主动关心', '语音陪伴']);
+  setCapabilityChips(['长期记忆', '现实时间', '主动关心']);
   renderCompanionPlans();
   renderRecentConversations();
   renderCompanionContext();
@@ -2701,7 +1962,6 @@ function renderActionWorkspace() {
   messageInput.placeholder = available ? '描述需要完成的工作…' : '先启用 Work 后再开始…';
   sendButton.textContent = '执行';
   sendButton.setAttribute('aria-label', '执行工作任务');
-  voiceInputButton.hidden = true;
   agentRuntimeStatus.textContent = available
     ? 'Work 已就绪。把明确的任务交给我吧。'
     : (actionRuntimeStatus?.reason || 'Work 尚未启用。');
@@ -3105,15 +2365,6 @@ function configPayload() {
     girlfriendIntervalMinutes: Number(girlfriendIntervalMinutesInput.value),
     girlfriendMaxFollowUps: Number(girlfriendMaxFollowUpsInput.value),
     momentsEnabled: momentsEnabledInput.checked,
-    voice: {
-      autoReadReplies: voiceAutoReadInput.checked,
-      engine: voiceEngineSelect.value === 'system' ? 'system' : 'local',
-      culture: voiceCultureSelect.value || 'zh-CN',
-      voiceName: voiceNameSelect.value,
-      rate: Number(voiceRateInput.value),
-      pitch: Number(voicePitchInput.value),
-      volume: Number(voiceVolumeInput.value)
-    },
     weatherEnabled: weatherEnabledInput.checked,
     weatherCity: weatherCityInput.value,
     appearance: appearancePayload()
@@ -3175,7 +2426,7 @@ async function sendMessage(options = {}) {
     return;
   }
 
-  if (options.voiceMode !== true && options.skipWorkspaceIntent !== true) {
+  if (options.skipWorkspaceIntent !== true) {
     const intent = workspaceIntentFromChat(content);
     if (intent) {
       if (!chatWorkspaceStatus?.granted) {
@@ -3219,8 +2470,6 @@ async function sendMessage(options = {}) {
     send: () => api.sendChat({
       sessionId: requestSessionId,
       messages: turnConversation,
-      voiceMode: options.voiceMode === true,
-      voiceProfile: options.voiceProfile || {},
       workspaceContextId: options.workspaceContextId || ''
     }),
     onReply: async (result, currentTurn) => {
@@ -3234,14 +2483,6 @@ async function sendMessage(options = {}) {
       if (Array.isArray(result.sessions)) runtimeSessions = result.sessions;
       setMood(result);
       const replyView = chatTurnCoordinator.getState();
-      if (options.voiceMode === true || voiceConfig().autoReadReplies) {
-        speakText(result.content, {
-          emotion: result.emotion,
-          voiceProfile: options.voiceProfile
-        }).catch((error) => {
-          if (chatTurnCoordinator.isViewCurrent(replyView)) showNotice(errorText(error));
-        });
-      }
       if (chatConfig.memoryEnabled) refreshMemories(() => chatTurnCoordinator.isViewCurrent(replyView));
       refreshLifeState(() => chatTurnCoordinator.isViewCurrent(replyView));
       renderHistory();
@@ -4470,7 +3711,6 @@ knowledgeButton.addEventListener('click', () => api.openAssistant('knowledge'));
 lifeButton.addEventListener('click', openLife);
 sharedLifeButton.addEventListener('click', async () => { await openSharedLife(); selectSharedLifeTab('projects'); });
 momentsButton.addEventListener('click', openMoments);
-voiceInputButton.addEventListener('click', startVoiceInput);
 historyButton.addEventListener('click', openHistory);
 workspaceSearchButton.addEventListener('click', openHistory);
 workspaceSidebarToggle.addEventListener('click', () => {
@@ -4591,10 +3831,6 @@ addLifeItemButton.addEventListener('click', addLifeItem);
 refreshWeatherButton.addEventListener('click', refreshWeather);
 resetMindButton.addEventListener('click', resetMind);
 generateMomentButton.addEventListener('click', generateMoment);
-testVoiceButton.addEventListener('click', testVoice);
-installLocalVoiceButton.addEventListener('click', installLocalVoice);
-voiceEngineSelect.addEventListener('change', updateVoiceEngineControls);
-for (const slider of [voiceRateInput, voicePitchInput, voiceVolumeInput]) slider.addEventListener('input', updateVoiceSliderLabels);
 for (const input of [appearanceThemeInput, appearanceGlassInput, appearanceDensityInput, appearanceTransparencyInput, appearanceScaleInput, appearanceMotionInput]) {
   input.addEventListener(input.type === 'range' ? 'input' : 'change', updateAppearancePreview);
 }
@@ -4607,7 +3843,6 @@ habitTitleInput.addEventListener('keydown', (event) => { if (event.key === 'Ente
 girlfriendEnabledInput.addEventListener('change', () => { girlfriendIntervalMinutesInput.disabled = !girlfriendEnabledInput.checked; girlfriendMaxFollowUpsInput.disabled = !girlfriendEnabledInput.checked; previewGirlfriendButton.disabled = !girlfriendEnabledInput.checked; });
 proactiveEnabledInput.addEventListener('change', () => { proactiveIntervalMinutesInput.disabled = !proactiveEnabledInput.checked; proactiveDailyLimitInput.disabled = !proactiveEnabledInput.checked; });
 weatherEnabledInput.addEventListener('change', () => { weatherCityInput.disabled = !weatherEnabledInput.checked; if (weatherEnabledInput.checked) weatherCityInput.focus(); });
-if ('speechSynthesis' in window) { window.speechSynthesis.addEventListener('voiceschanged', refreshSpeechVoices); refreshSpeechVoices(); }
 try {
   chatApp.classList.toggle('sidebar-collapsed', localStorage.getItem('mai-companion-sidebar-collapsed') === '1');
 } catch {
@@ -4616,9 +3851,6 @@ try {
 window.addEventListener('beforeunload', () => {
   chatTurnCoordinator.dispose();
   workRendererBindings.dispose();
-  api.stopVoiceListening().catch(() => {});
-  stopSpeaking();
-  disposeVoiceInputMonitor();
   clearTimeout(portraitReactionTimer);
 });
 
@@ -4640,7 +3872,6 @@ Promise.all([
   workRendererBindings.setInitialData(storedWorkData);
   renderMemories(); renderSharedLife(); renderLifeState(); renderMoments(); applyChatState(chatState);
   setRuntimeMode('chat');
-  refreshSpeechVoices(); refreshVoiceCapabilities();
   if (!config.configured) openSettings(); else messageInput.focus();
 }).catch((error) => {
   if (!chatTurnCoordinator.getState().disposed) showNotice(errorText(error));
@@ -4648,11 +3879,6 @@ Promise.all([
 
 api.onShowChatSettings(openSettings);
 api.onShowLifePanel(openLife);
-api.onLocalVoiceStatus((status) => {
-  const current = voiceCapabilities.localTts || {};
-  renderLocalVoiceStatus(status);
-  if (status.ready && status.enhanced && (!current.ready || !current.enhanced)) setSettingsStatus('本地情绪女声与语气感知已经就绪。');
-});
 api.onMomentsUpdated((state) => { momentsState = state; renderMoments(); });
 api.onSharedLifeUpdated((state) => { sharedLifeState = state; renderSharedLife(); });
 api.onLifeHubUpdated((state) => { lifeHubState = state; renderSharedLife(); });
@@ -4671,7 +3897,6 @@ api.onChatProactiveGreeting(async (payload) => {
     conversation = conversation.slice(-MAX_RENDER_CONTEXT_MESSAGES);
     if (renderInChat) {
       setMood(payload);
-      if (voiceConfig().autoReadReplies) speakText(payload.content, { emotion: payload.emotion }).catch(() => {});
     }
   }
   try {

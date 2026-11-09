@@ -100,12 +100,14 @@ test('window manager creates the pet window with the existing secure preload bou
   assert.match(state.main.loadedFile, /renderer[\\/]index\.html$/);
 });
 
-test('window manager retains chat media permission scope and closes voice recognition', () => {
+test('window manager denies media permission and preserves Chat close ownership', () => {
   const { manager, state, stopped, closedWebContentsIds } = createHarness();
   manager.openChat();
   const chat = state.chat;
-  assert.equal(chat.permissionRequestHandler(chat.webContents, 'media', () => {}), undefined);
-  assert.equal(chat.permissionCheckHandler(chat.webContents, 'media'), true);
+  let granted;
+  chat.permissionRequestHandler(chat.webContents, 'media', value => { granted = value; });
+  assert.equal(granted, false);
+  assert.equal(chat.permissionCheckHandler(chat.webContents, 'media'), false);
   assert.equal(chat.permissionCheckHandler({ id: 999 }, 'media'), false);
   const capturedWebContentsId = chat.webContents.id;
   chat.destroyed = true;
@@ -130,7 +132,7 @@ test('pet context menu keeps common actions at the top level and groups secondar
   assert.ok(management.submenu.some((item) => item.label === '模型与聊天设置…'));
 });
 
-test('wardrobe is a reusable independent window; closing it does not stop chat voice', () => {
+test('wardrobe is a reusable independent window; closing it does not close Chat', () => {
   const { manager, stopped } = createHarness();
   manager.openChat(); manager.openWardrobe();
   const first = manager.getWardrobeWindow();

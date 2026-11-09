@@ -139,15 +139,6 @@ const mockConfig = {
   girlfriendIntervalMinutes: 20,
   girlfriendMaxFollowUps: 4,
   momentsEnabled: true,
-  voice: {
-    autoReadReplies: false,
-    engine: 'local',
-    culture: 'zh-CN',
-    voiceName: '',
-    rate: 1,
-    pitch: 1,
-    volume: 1
-  },
   weatherEnabled: false,
   weatherCity: '',
   wallpaper: 'none',
@@ -289,36 +280,12 @@ contextBridge.exposeInMainWorld('maiPet', {
     });
   },
   getMomentsState: async () => momentsState,
-  getVoiceCapabilities: async () => ({
-    available: true,
-    defaultCulture: 'zh-CN',
-    recognizers: [{ id: 'preview', name: 'Windows 中文语音识别', culture: 'zh-CN' }],
-    localTts: {
-      installed: true,
-      enhanced: true,
-      ready: true,
-      state: 'ready',
-      runtime: {
-        device: 'NVIDIA GeForce RTX 4060 Laptop GPU',
-        expressive: true,
-        senseVoice: true
-      }
-    }
-  }),
-  getLocalVoiceStatus: async () => ({ installed: true, enhanced: true, ready: true, state: 'ready' }),
-  installLocalVoice: async () => ({ installed: true, enhanced: true, ready: true, state: 'ready' }),
-  cancelLocalVoiceInstall: async () => ({ canceled: true }),
-  synthesizeLocalVoice: async () => ({ ok: false }),
-  analyzeVoiceAudio: async () => ({ ok: false, available: false }),
-  listenVoice: async () => new Promise(() => {}),
-  stopVoiceListening: async () => ({ stopped: true }),
   generateMoment: async () => momentsState,
   commentOnMoment: async () => momentsState,
   onShowChatSettings: noop,
   onShowLifePanel: noop,
   onActionSessionStarted: noop,
   onAgentEvent: noop,
-  onLocalVoiceStatus: noop,
   onMomentsUpdated: noop,
   onSharedLifeUpdated: noop,
   onLifeHubUpdated: noop,

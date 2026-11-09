@@ -57,17 +57,6 @@ contextBridge.exposeInMainWorld('maiPet', {
   saveChatConfig: (config) => ipcRenderer.invoke('chat:save-config', config),
   clearApiKey: () => ipcRenderer.invoke('chat:clear-api-key'),
   testChatConnection: () => ipcRenderer.invoke('chat:test-connection'),
-  getVoiceCapabilities: () => ipcRenderer.invoke('voice:get-capabilities'),
-  getLocalVoiceStatus: () => ipcRenderer.invoke('voice:get-local-status'),
-  installLocalVoice: () => ipcRenderer.invoke('voice:install-local'),
-  cancelLocalVoiceInstall: () => ipcRenderer.invoke('voice:cancel-local-install'),
-  synthesizeLocalVoice: (input) => ipcRenderer.invoke('voice:synthesize', input),
-  analyzeVoiceAudio: (input) => ipcRenderer.invoke('voice:analyze-audio', input),
-  listenVoice: (input) => ipcRenderer.invoke('voice:listen', input),
-  stopVoiceListening: () => ipcRenderer.invoke('voice:stop-listening'),
-  onLocalVoiceStatus: (callback) => {
-    ipcRenderer.on('voice:local-status', (_event, status) => callback(status));
-  },
   getActionStatus: () => ipcRenderer.invoke('agent:get-status'),
   configureAction: (input) => ipcRenderer.invoke('agent:configure', input),
   executeAction: (input) => ipcRenderer.invoke('agent:execute', input),

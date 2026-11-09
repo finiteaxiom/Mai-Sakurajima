@@ -13,7 +13,6 @@ test('v7.1 keeps the stable app identity and packages companion plus optional ac
   assert.equal(packageJson.build.productName, 'Mai Sakurajima');
   for (const runtimeModule of [
     'window-manager.js',
-    'voice-ipc.js',
     'assistant-ipc.js',
     'timer-ipc.js',
     'pet-visibility.js',
@@ -38,6 +37,8 @@ test('v7.1 keeps the stable app identity and packages companion plus optional ac
   ]) {
     assert.ok(packageJson.build.files.includes(runtimeModule), `${runtimeModule} must be packaged`);
   }
+  assert.equal(packageJson.build.files.some(file => /voice|tts/.test(file)), false);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'voice-engine')), false);
   assert.equal(packageJson.build.files.includes('assets/wallpapers/**/*'), false);
   assert.equal(packageJson.build.files.includes('assets/avatars/**/*'), false);
   assert.ok(packageJson.build.files.includes('action-ipc.js'));

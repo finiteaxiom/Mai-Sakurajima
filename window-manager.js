@@ -115,21 +115,10 @@ function createWindowManager({
     setChatWindow(chatWindow);
     const chatWebContentsId = chatWindow.webContents.id;
 
+    // Mai no longer captures audio or video; deny permissions for every renderer.
     const chatSession = chatWindow.webContents.session;
-    chatSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      const currentChat = getChatWindow();
-      const isCurrentChat = currentChat
-        && !currentChat.isDestroyed()
-        && webContents.id === currentChat.webContents.id;
-      callback(permission === 'media' && isCurrentChat);
-    });
-    chatSession.setPermissionCheckHandler((webContents, permission) => {
-      const currentChat = getChatWindow();
-      return permission === 'media'
-        && Boolean(currentChat)
-        && !currentChat.isDestroyed()
-        && webContents?.id === currentChat.webContents.id;
-    });
+    chatSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    chatSession.setPermissionCheckHandler(() => false);
     chatWindow.setMenuBarVisibility(false);
     chatWindow.loadFile(assetPath('renderer', 'chat.html'));
     chatWindow.once('ready-to-show', () => {

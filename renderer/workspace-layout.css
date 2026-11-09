@@ -203,10 +203,6 @@
   cursor: default;
 }
 .ui-chat .settings-title-row p,
-.ui-chat .voice-settings-title p,
-.ui-chat .local-voice-install small,
-.ui-chat .voice-slider-grid small,
-.ui-chat .voice-slider-grid b,
 .ui-chat .field small,
 .ui-chat .memory-privacy,
 .ui-chat .moments-privacy {
@@ -221,9 +217,7 @@
 
 .ui-chat .mind-panel__headline strong,
 .ui-chat .weather-panel strong,
-.ui-chat .life-divider strong,
-.ui-chat .voice-settings-title strong,
-.ui-chat .local-voice-install strong {
+.ui-chat .life-divider strong {
   color: var(--ui-text);
 }
 
@@ -244,14 +238,12 @@
 }
 
 .ui-chat .settings-status,
-.ui-chat .voice-capability-status,
 .ui-chat .memory-privacy,
 .ui-chat .moments-status {
   color: var(--ui-success);
 }
 
-.ui-chat .settings-status--error,
-.ui-chat .voice-capability-status--error {
+.ui-chat .settings-status--error {
   color: var(--ui-danger);
 }
 
@@ -265,8 +257,6 @@
 
 .ui-chat #settings-overlay .settings-title-row,
 .ui-chat #settings-overlay .toggle-group,
-.ui-chat #settings-overlay .voice-settings-panel,
-.ui-chat #settings-overlay .local-voice-install,
 .ui-chat #settings-overlay .wallpaper-settings,
 .ui-chat #settings-overlay .settings-status,
 .ui-chat #settings-overlay .settings-actions {
@@ -277,15 +267,6 @@
   margin: 0;
 }
 
-.ui-chat .voice-select-grid,
-.ui-chat .voice-slider-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.ui-chat .local-voice-install {
-  padding: 18px 20px;
-}
 
 /* Life: relationship state and weather sit side by side. */
 .ui-chat .life-card {
@@ -562,8 +543,6 @@
 
   .ui-chat .life-add,
   .ui-chat .memory-card .memory-add,
-  .ui-chat .voice-select-grid,
-  .ui-chat .voice-slider-grid,
   .ui-chat .moments-list {
     grid-template-columns: 1fr;
   }

@@ -4,7 +4,7 @@
 
 ## 1. 产品定位与双 Runtime
 
-Mai 首先是本地优先的 Windows 桌面 AI 伴侣，核心仍是自然对话、连续会话、长期记忆、人格、共同生活、语音、桌宠与用户明确操作的生活辅助。
+Mai 首先是本地优先的 Windows 桌面 AI 伴侣，核心仍是自然对话、连续会话、长期记忆、人格、共同生活、桌宠与用户明确操作的生活辅助。
 
 Mai 可以拥有可选、受控、独立的 Action Runtime（行动运行时），但它不是通用 Agent 平台、Coding Agent、Workflow Engine、Shell frontend 或多代理产品。Agent 不得成为产品中心，也不得把普通对话包装成行动任务。
 

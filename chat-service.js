@@ -41,7 +41,6 @@ class ChatService {
 
     assertRequestCurrent();
 
-    const voiceMode = options.voiceMode === true;
     const reply = await runChatRuntime({
       messages,
       directReply: dependencies.directReply,
@@ -49,7 +48,7 @@ class ChatService {
       requestOptions: {
         maxTokens: Number.isFinite(options.maxTokens)
           ? options.maxTokens
-          : voiceMode ? 360 : 700,
+          : 700,
         structured: true,
         sessionId: options.sessionId,
         requestId: options.requestId,
@@ -131,8 +130,6 @@ class ChatService {
     const deliveredReply = {
       ...reply,
       createdAt: storedMessages.at(-1)?.createdAt || new Date().toISOString(),
-      voiceMode,
-      voiceProfile: options.voiceProfile || null,
       runtimeMode: CHAT_MODE
     };
     if (typeof dependencies.deliverReply === 'function') {

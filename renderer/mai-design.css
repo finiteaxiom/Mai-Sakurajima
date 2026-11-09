@@ -141,7 +141,7 @@
 .ui-chat .composer:focus-within { border-color: var(--mai-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--mai-accent) 22%, transparent), var(--mai-glass-shadow); }
 .ui-chat #message-input { font-size: calc(15px * var(--mai-ui-scale)); color: var(--mai-text-primary); background: transparent; }
 .ui-chat #message-input::placeholder { color: var(--mai-text-muted); opacity: 1; }
-.ui-chat .voice-input-button { width: 36px; height: 36px; color: var(--mai-text-secondary); }
+
 .ui-chat .sidebar-tools { grid-template-columns: 1fr; }
 .ui-chat .user-avatar-setting { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
 .ui-chat .user-avatar-setting img { display: block; width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }

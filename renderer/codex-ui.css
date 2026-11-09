@@ -466,15 +466,6 @@
 
 .ui-chat #message-input::placeholder { color: #aaa6a6; }
 
-.ui-chat .voice-input-button {
-  width: 42px;
-  height: 42px;
-  color: var(--codex-text-soft);
-  border: 0;
-  border-radius: 13px;
-  background: transparent;
-}
-.ui-chat .voice-input-button:hover { color: var(--codex-text); background: var(--codex-surface-hover); }
 
 .ui-chat .send-button,
 .ui-chat .button--primary,
@@ -622,8 +613,6 @@
 
 .ui-chat .world-card,
 .ui-chat .toggle-group,
-.ui-chat .voice-settings-panel,
-.ui-chat .local-voice-install,
 .ui-chat .memory-item,
 .ui-chat .hub-item,
 .ui-chat .continuity-summary,

@@ -204,23 +204,6 @@
   opacity: 1;
 }
 
-.ui-chat .voice-input-button {
-  color: var(--ui-muted);
-  border-color: transparent;
-  background: transparent;
-}
-
-.ui-chat .voice-input-button:hover {
-  color: var(--ui-text);
-  background: var(--ui-canvas);
-}
-
-.ui-chat .voice-input-button--listening {
-  color: var(--mai-accent);
-  border-color: #d8a9bd;
-  background: var(--mai-tint);
-  box-shadow: 0 0 0 4px rgba(163, 63, 110, 0.1);
-}
 
 .ui-chat .send-button,
 .ui-chat .button--primary,
@@ -259,8 +242,6 @@
 }
 .ui-chat .history-item,
 .ui-chat .toggle-group,
-.ui-chat .voice-settings-panel,
-.ui-chat .local-voice-install,
 .ui-chat .memory-item,
 .ui-chat .world-card,
 .ui-chat .hub-item,
@@ -304,7 +285,6 @@
 .ui-chat .field textarea,
 .ui-chat .field select,
 .ui-chat .frequency-fields input,
-.ui-chat .voice-select-grid select,
 .ui-chat .memory-add input,
 .ui-chat .memory-add select,
 .ui-chat .person-editor input,
@@ -401,27 +381,23 @@
 }
 
 .ui-chat .continuity-progress,
-.ui-chat .mind-meter,
-.ui-chat .local-voice-progress {
+.ui-chat .mind-meter {
   background: #dedede;
 }
 
 .ui-chat .continuity-progress i,
-.ui-chat .mind-meter i,
-.ui-chat .local-voice-progress i {
+.ui-chat .mind-meter i {
   background: var(--mai-accent);
   box-shadow: none;
 }
 
 .ui-chat .memory-privacy,
 .ui-chat .moments-status,
-.ui-chat .settings-status,
-.ui-chat .voice-capability-status {
+.ui-chat .settings-status {
   color: var(--ui-success);
 }
 
-.ui-chat .settings-status--error,
-.ui-chat .voice-capability-status--error {
+.ui-chat .settings-status--error {
   color: var(--ui-danger);
 }
 .ui-chat .moment-comment--user strong {

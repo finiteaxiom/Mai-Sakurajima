@@ -58,7 +58,7 @@
 .ui-chat .settings-panel .toggle-row { border: 1px solid var(--mai-border); border-radius: 9px; background: var(--mai-surface); padding: 14px 16px; }
 .ui-chat .settings-panel .appearance-settings { grid-template-columns: repeat(2,minmax(0,1fr)); border-radius: 11px; background: var(--mai-surface); }
 .ui-chat .settings-panel [aria-labelledby="wardrobe-title"], .ui-chat .settings-panel [aria-labelledby="diagnostics-title"] { display: block; }
-.ui-chat .settings-panel .voice-settings-panel { grid-column: 1; }
+
 .ui-chat .settings-panel > .button { justify-self: start; }
 .ui-chat .settings-panel .endpoint { overflow-wrap: anywhere; min-width: 0; }
 .ui-chat .settings-panel input:not([type="checkbox"]):not([type="range"]), .ui-chat .settings-panel textarea, .ui-chat .settings-panel select { border-radius: 7px; min-width: 0; max-width: 100%; }

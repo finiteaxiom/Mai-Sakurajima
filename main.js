@@ -118,9 +118,6 @@ const {
   searchContinuity
 } = require('./continuity-engine');
 const { initializeStorage } = require('./storage');
-const { VoiceService } = require('./voice-service');
-const { LocalTtsService } = require('./local-tts-service');
-const { describeVoiceProfile } = require('./voice-emotion');
 const { ChatService } = require('./chat-service');
 const { createChatRequestLifecycle } = require('./chat-request-lifecycle');
 const { createChatTurnStateWriter } = require('./chat-turn-state');
@@ -181,7 +178,6 @@ const {
 } = require('./avatar-catalog');
 const { createWindowManager } = require('./window-manager');
 const { showStartupAnimation } = require('./startup-animation');
-const { registerVoiceIpc } = require('./voice-ipc');
 const { registerAssistantIpc } = require('./assistant-ipc');
 const { registerTimerIpc } = require('./timer-ipc');
 const { createPetVisibility } = require('./pet-visibility');
@@ -270,10 +266,6 @@ const workStore = new WorkStore({
   beforeSave: assertProductDataWritable
 });
 let legacyAgentWorkspacePath = '';
-const voiceService = new VoiceService();
-const localTtsService = new LocalTtsService({
-  onStatus: (status) => broadcastLocalTtsStatus(status)
-});
 const modelProviders = new ModelProviderRegistry()
   .register(new DeepSeekProvider({
     getApiKey: () => getDeepSeekApiKey(),
@@ -542,15 +534,6 @@ let settings = {
   agent: {
     enabled: false,
     runtime: 'mai-agent'
-  },
-  voice: {
-    autoReadReplies: false,
-    engine: 'local',
-    culture: 'zh-CN',
-    voiceName: '',
-    rate: 1,
-    pitch: 1,
-    volume: 1
   },
   deepseek: {
     apiKeyEncrypted: '',
@@ -928,10 +911,6 @@ function loadSettings() {
       ...settings.agent,
       ...(stored.agent && typeof stored.agent === 'object' ? stored.agent : {})
     }),
-    voice: {
-      ...settings.voice,
-      ...(stored.voice || {})
-    },
     appearance: {
       ...settings.appearance,
       ...(stored.appearance || {}),
@@ -1533,15 +1512,6 @@ function publicDeepSeekSettings() {
     girlfriendIntervalMinutes: girlfriend.intervalMinutes,
     girlfriendMaxFollowUps: girlfriend.maxFollowUps,
     momentsEnabled: settings.deepseek.momentsEnabled !== false,
-    voice: {
-      autoReadReplies: settings.voice.autoReadReplies === true,
-      engine: settings.voice.engine === 'system' ? 'system' : 'local',
-      culture: String(settings.voice.culture || 'zh-CN').slice(0, 12),
-      voiceName: String(settings.voice.voiceName || '').slice(0, 160),
-      rate: boundedNumber(settings.voice.rate, 0.7, 1.4, 1),
-      pitch: boundedNumber(settings.voice.pitch, 0.7, 1.3, 1),
-      volume: boundedNumber(settings.voice.volume, 0.1, 1, 1)
-    },
     weatherEnabled: settings.deepseek.weatherEnabled === true,
     weatherCity: String(settings.deepseek.weatherCity || '').trim().slice(0, 80),
     appearance: {
@@ -1580,13 +1550,6 @@ function publicPetSettings() {
     reminder: publicReminderState(),
     deepseek: publicDeepSeekSettings()
   };
-}
-
-function broadcastLocalTtsStatus(status = localTtsService.status()) {
-  if (chatWindow && !chatWindow.isDestroyed()) {
-    chatWindow.webContents.send('voice:local-status', status);
-  }
-  return status;
 }
 
 function publicReminderState() {
@@ -4626,6 +4589,20 @@ async function runUiSmoke(outputPath) {
       wait();
     })`);
 
+    // Exercise the real settings IPC with legacy voice data still on disk.
+    const legacyVoiceBefore = JSON.stringify(settings.voice);
+    await contents.executeJavaScript(`(async () => {
+      const config = await window.maiPet.getChatConfig();
+      if ('voice' in config || Object.keys(window.maiPet).some(key => /voice/i.test(key))) {
+        throw new Error('Removed voice capability is still exposed to Renderer.');
+      }
+      await window.maiPet.saveChatConfig({ ...config, voice: { autoReadReplies: true, engine: 'system' } });
+    })()`);
+    if (JSON.stringify(settings.voice) !== legacyVoiceBefore
+      || JSON.stringify(JSON.parse(fs.readFileSync(settingsPath(), 'utf8')).voice) !== legacyVoiceBefore) {
+      throw new Error('Saving current settings changed legacy voice data.');
+    }
+
     let settingsSaveError = null;
     if (process.env.MAI_UI_SAVE_ERROR_SMOKE === '1') {
       const settingsBytesBeforeFailure = fs.readFileSync(settingsPath());
@@ -4716,7 +4693,7 @@ async function runUiSmoke(outputPath) {
         hasConversationList: Boolean(document.getElementById('recent-list')),
         hasMemoryNavigation: Boolean(document.getElementById('memory-button')),
         hasMomentsNavigation: Boolean(document.getElementById('moments-button')),
-        hasVoiceInput: Boolean(document.getElementById('voice-input-button')),
+        voiceUiRemoved: !document.getElementById('voice-input-button') && !document.getElementById('settings-panel-voice'),
         voiceCallRemoved: !document.getElementById('voice-call-button') && !document.getElementById('voice-call-overlay'),
         hasCompanionContext: Boolean(document.getElementById('companion-context')),
         hasWorkspaceSwitcher: Boolean(document.getElementById('runtime-switcher-button')),
@@ -4860,7 +4837,7 @@ async function runUiSmoke(outputPath) {
         && chat.hasConversationList
         && chat.hasMemoryNavigation
         && chat.hasMomentsNavigation
-        && chat.hasVoiceInput
+        && chat.voiceUiRemoved
         && chat.voiceCallRemoved
         && chat.hasCompanionContext
         && chat.hasWorkspaceSwitcher
@@ -5256,7 +5233,6 @@ windowManager = createWindowManager({
   saveSettings,
   onChatClosed: (senderId) => {
     chatRequestLifecycle.cancelSender(senderId, 'window_closed');
-    voiceService.stopRecognition();
   },
   publicReminderState,
   reminderMenuLabel,
@@ -5579,18 +5555,6 @@ function registerIpc() {
     if (typeof input?.momentsEnabled === 'boolean') {
       nextSettings.deepseek.momentsEnabled = input.momentsEnabled;
     }
-    if (input?.voice && typeof input.voice === 'object') {
-      if (typeof input.voice.autoReadReplies === 'boolean') {
-        nextSettings.voice.autoReadReplies = input.voice.autoReadReplies;
-      }
-      nextSettings.voice.engine = input.voice.engine === 'system' ? 'system' : 'local';
-      const culture = String(input.voice.culture || nextSettings.voice.culture || 'zh-CN').trim();
-      nextSettings.voice.culture = /^[a-z]{2,3}-[a-z]{2,4}$/i.test(culture) ? culture : 'zh-CN';
-      nextSettings.voice.voiceName = String(input.voice.voiceName || '').trim().slice(0, 160);
-      nextSettings.voice.rate = boundedNumber(input.voice.rate, 0.7, 1.4, 1);
-      nextSettings.voice.pitch = boundedNumber(input.voice.pitch, 0.7, 1.3, 1);
-      nextSettings.voice.volume = boundedNumber(input.voice.volume, 0.1, 1, 1);
-    }
     nextSettings.deepseek.girlfriendIntervalMinutes = requiredIntegerSetting(
       input?.girlfriendIntervalMinutes,
       MIN_CONTACT_INTERVAL_MINUTES,
@@ -5661,17 +5625,10 @@ function registerIpc() {
     return { ok: true };
   });
 
-  registerVoiceIpc({
-    ipcMain,
-    voiceService,
-    localTtsService,
-    getVoiceSettings: () => settings.voice
-  });
 
   chatSendHandler = async (event, input) => {
     assertProductDataWritable();
     const messages = Array.isArray(input) ? input : input?.messages;
-    const voiceMode = !Array.isArray(input) && input?.voiceMode === true;
     const sessionId = String(
       (Array.isArray(input) ? memoryState.activeSessionId : input?.sessionId)
       || memoryState.activeSessionId
@@ -5692,22 +5649,14 @@ function registerIpc() {
       const workspaceContext = workspaceContextId
         ? workspaceCapabilityGateway.consumeContext(assertActiveChatWorkspaceSession(sessionId), workspaceContextId)
         : null;
-      const voiceProfile = voiceMode
-        ? describeVoiceProfile(latestUserText, input?.voiceProfile, input?.voiceProfile?.senseEmotion)
-        : null;
       return await chatService.send({
         messages: cleanMessages,
         sessionId,
         requestId: request.requestId,
         signal: request.controller.signal,
         assertRequestCurrent: request.assertCurrent,
-        voiceMode,
-        voiceProfile,
         workspaceContext,
-        diagnostic: createLlmDiagnostic('chat_response', 'ChatService.send'),
-        responseInstruction: voiceMode
-          ? `当前用户通过单次语音输入发送消息。reply 请使用适合自然说出口的简洁中文，通常 1—3 句话；避免 Markdown、项目符号、括号说明和过长铺垫，并自然承接用户刚说的话。用户本轮可参考的声音线索：${voiceProfile.description}。声音线索可能受麦克风影响，只把它作为语气参考，不要武断地给用户下结论。`
-          : ''
+        diagnostic: createLlmDiagnostic('chat_response', 'ChatService.send')
       });
     } catch (error) {
       if (request.status === 'cancelled' || request.controller.signal.aborted) {
@@ -6493,8 +6442,6 @@ if (!gotLock) {
     clearInterval(activityTrackingTimer);
     clearInterval(knowledgeRefreshTimer);
     saveProductDataOnShutdown();
-    voiceService.dispose();
-    localTtsService.dispose();
   });
   app.on('window-all-closed', () => {
     // A tray companion should remain available until the user explicitly exits.

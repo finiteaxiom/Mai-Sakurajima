@@ -1,7 +1,7 @@
 {
   "name": "mai-sakurajima",
   "version": "7.1.0",
-  "description": "以对话、长期记忆、人格、语音和桌面陪伴为核心的 Mai Sakurajima Windows AI companion",
+  "description": "以对话、长期记忆、人格和桌面陪伴为核心的 Mai Sakurajima Windows AI companion",
   "main": "main.js",
   "author": "Mai Sakurajima Contributors",
   "license": "UNLICENSED",
@@ -29,7 +29,6 @@
       "diagnostics-ipc.js",
       "window-manager.js",
       "startup-animation.js",
-      "voice-ipc.js",
       "assistant-ipc.js",
       "timer-ipc.js",
       "action-ipc.js",
@@ -75,12 +74,7 @@
       "knowledge-engine.js",
       "knowledge-importer.js",
       "moments.js",
-      "local-tts-service.js",
-      "voice-emotion.js",
       "deepseek-stream.js",
-      "voice-service.js",
-      "voice/**/*",
-      "voice-engine/**/*",
       "persona.js",
       "preload.js",
       "storage.js",
@@ -97,10 +91,6 @@
     "directories": {
       "output": "dist"
     },
-    "asarUnpack": [
-      "voice/**/*.ps1",
-      "voice-engine/**/*"
-    ],
     "win": {
       "icon": "assets/mai-icon.ico",
       "target": [

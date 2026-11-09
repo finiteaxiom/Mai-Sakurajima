@@ -16,10 +16,9 @@ const userData = path.join(root, 'user-data');
 const verifySettingsSaveFailure = process.env.MAI_UI_SAVE_ERROR_SMOKE === '1';
 const settingsPath = path.join(userData, 'mai-pet-deepseek-settings.json');
 
-if (verifySettingsSaveFailure) {
-  fs.mkdirSync(userData, { recursive: true });
-  fs.writeFileSync(settingsPath, JSON.stringify({ firstLaunch: false }, null, 2), 'utf8');
-}
+const legacyVoice = { autoReadReplies: false, engine: 'local', customLegacyField: 'preserve-me' };
+fs.mkdirSync(userData, { recursive: true });
+fs.writeFileSync(settingsPath, JSON.stringify({ firstLaunch: false, voice: legacyVoice }, null, 2), 'utf8');
 
 function runUiSmoke(output) {
   const appArguments = path.basename(executable).toLowerCase() === 'electron.exe'
@@ -50,6 +49,7 @@ function runUiSmoke(output) {
   assert.equal(processResult.status, 0, `${processResult.stdout}\n${processResult.stderr}\n${JSON.stringify(result)}`);
   assert.ok(result, 'UI smoke did not create a result file');
   assert.equal(result.ok, true, result.error || JSON.stringify(result));
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsPath, 'utf8')).voice, legacyVoice, 'legacy voice data must survive save and restart without becoming active');
   if (verifySettingsSaveFailure) {
     assert.deepEqual(result.settingsSaveError, {
       message: '设置未保存。输入仍保留在本窗口，请稍后重试或查看诊断。查看诊断',
@@ -73,7 +73,7 @@ try {
   assert.equal(result.chat.hasConversationList, true);
   assert.equal(result.chat.hasMemoryNavigation, true);
   assert.equal(result.chat.hasMomentsNavigation, true);
-  assert.equal(result.chat.hasVoiceInput, true);
+  assert.equal(result.chat.voiceUiRemoved, true);
   assert.equal(result.chat.voiceCallRemoved, true);
   assert.equal(result.chat.hasCompanionContext, true);
   assert.equal(result.chat.hasWorkspaceSwitcher, true);

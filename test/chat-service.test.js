@@ -110,7 +110,7 @@ test('Chat service preserves local replies and never contacts the model', async 
   assert.equal(modelCalls, 0);
 });
 
-test('Chat service forwards voice streaming options while keeping Chat semantics', async () => {
+test('Chat service ignores legacy voice flags while preserving text streaming', async () => {
   let requestOptions;
   const onDelta = () => {};
   const voiceProfile = { description: '语气平静' };
@@ -128,11 +128,11 @@ test('Chat service forwards voice streaming options while keeping Chat semantics
     onDelta,
     responseInstruction: '自然地说话。'
   });
-  assert.equal(requestOptions.maxTokens, 360);
+  assert.equal(requestOptions.maxTokens, 700);
   assert.equal(requestOptions.onDelta, onDelta);
   assert.equal(requestOptions.structured, true);
-  assert.equal(result.voiceMode, true);
-  assert.equal(result.voiceProfile, voiceProfile);
+  assert.equal(result.voiceMode, undefined);
+  assert.equal(result.voiceProfile, undefined);
   assert.equal(result.runtimeMode, 'chat');
 });
 

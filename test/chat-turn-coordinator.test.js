@@ -190,7 +190,7 @@ function createIntegrationHarness(t) {
 
   function queueProvider(handler) { providerHandlers.push(handler); }
 
-  function startRendererTurn({ content, voiceMode = false, requestId = `renderer-${++idSequence}` }) {
+  function startRendererTurn({ content, requestId = `renderer-${++idSequence}` }) {
     const turnConversation = renderedView.conversation;
     const optimisticMessage = { role: 'user', content };
     const optimisticNode = { role: 'user', content };
@@ -220,7 +220,6 @@ function createIntegrationHarness(t) {
       send: () => api.sendChat({
         sessionId: turn.sessionId,
         messages: turnConversation,
-        voiceMode,
         requestId: turn.requestId
       }),
       onReply: (result, currentTurn) => {
@@ -263,7 +262,7 @@ test('switching sessions before a signal-ignoring fake provider returns cleans t
     request.onDelta?.('A 的迟到增量');
     return reply('A 的迟到回复');
   });
-  const oldTurn = harness.startRendererTurn({ content: 'A 的用户消息', voiceMode: true });
+  const oldTurn = harness.startRendererTurn({ content: 'A 的用户消息' });
   await providerStarted.promise;
 
   harness.selectChatSession('chat-b');
@@ -375,7 +374,7 @@ test('dispose is idempotent and late cancel, state, and reply completions cannot
   });
   let detachCount = 0;
   harness.coordinator.addDisposer(() => { detachCount += 1; });
-  const turn = harness.startRendererTurn({ content: 'dispose 测试消息', voiceMode: true });
+  const turn = harness.startRendererTurn({ content: 'dispose 测试消息' });
   await providerStarted.promise;
   const cancel = harness.coordinator.cancelCurrentTurn();
   await getStateStarted.promise;
@@ -531,7 +530,7 @@ test('cancel IPC failure remains visible and lets the original Main request fini
     return reply('取消失败后继续完成的回复');
   });
   harness.api.cancelChatRequest = async () => { throw new Error('cancel IPC failed'); };
-  const turn = harness.startRendererTurn({ content: '继续运行的用户消息', voiceMode: true });
+  const turn = harness.startRendererTurn({ content: '继续运行的用户消息' });
   await providerStarted.promise;
 
   const cancellation = await harness.coordinator.cancelCurrentTurn({ onError: (error) => errors.push(error.message) });
@@ -581,7 +580,7 @@ test('a late cancel IPC failure after a session switch is silent and cannot revi
   assert.deepEqual(harness.renderedView.projectedReplies, []);
 });
 
-test('metadata-only greeting refresh cannot rehydrate over a newer Chat or Voice turn', async (t) => {
+test('metadata-only greeting refresh cannot rehydrate over a newer Chat turn', async (t) => {
   const harness = createIntegrationHarness(t);
   const metadataGate = deferred();
   const refresh = harness.coordinator.refreshSessionMetadata(() => metadataGate.promise);

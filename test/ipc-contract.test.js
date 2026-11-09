@@ -97,12 +97,13 @@ test('preload exposes separate companion Chat and narrow Action contracts', asyn
   assert.equal(api.respondAgentApproval, undefined);
 });
 
-test('preload keeps single-shot voice APIs and detachable Agent events without call streaming', () => {
+test('preload removes voice APIs while retaining detachable Agent events', () => {
   const { api, listeners } = loadPreloadContract();
   const received = [];
   assert.equal(api.onVoiceStreamDelta, undefined);
-  assert.equal(typeof api.listenVoice, 'function');
-  assert.equal(typeof api.synthesizeLocalVoice, 'function');
+  assert.equal(api.listenVoice, undefined);
+  assert.equal(api.synthesizeLocalVoice, undefined);
+  assert.deepEqual(Object.keys(api).filter(key => /voice/i.test(key)), []);
   assert.equal(typeof api.onActionSessionStarted, 'function');
   const detachAgent = api.onAgentEvent((payload) => received.push(['agent', payload]));
   listeners.get('agent:event')({}, { type: 'TaskStarted', taskId: 'task-1' });

@@ -346,7 +346,7 @@ test('Work session rename/delete UI waits are bound to the captured project view
       && call.args[0].projectId === integration.projectB.id
       && call.args[0].workSessionId === integration.sessionB.id));
 
-    const remove = loadRendererFunction(sandbox, 'async function deleteConversationSession(', '\nfunction voiceConfig()', 'deleteConversationSession');
+    const remove = loadRendererFunction(sandbox, 'async function deleteConversationSession(', '\nfunction setConnection(', 'deleteConversationSession');
     assert.equal(await remove(integration.workStore.getSession(integration.sessionA.id), 'work', current), true);
     assert.equal(integration.workStore.getSession(integration.sessionA.id), null);
     assert.equal(notices.at(-1), '这条 Work 记录已删除。');
@@ -564,7 +564,7 @@ test('Chat history actions keep Chat routing even after the Work context menu wa
       window: { confirm: () => true }
     };
     const rename = loadRendererFunction(sandbox, 'async function renameConversationSession(', '\nasync function deleteConversationSession(', 'renameConversationSession');
-    const remove = loadRendererFunction(sandbox, 'async function deleteConversationSession(', '\nfunction voiceConfig()', 'deleteConversationSession');
+    const remove = loadRendererFunction(sandbox, 'async function deleteConversationSession(', '\nfunction setConnection(', 'deleteConversationSession');
     const chatSession = { id: 'chat-history-session', title: '旧聊天标题' };
     integration.bindings.activateMode('chat');
     assert.equal(await rename(chatSession, 'chat'), true);
@@ -590,12 +590,9 @@ test('a Chat proactive greeting updates Chat memory and metadata while Work is v
     chatTurnCoordinator: coordinator,
     conversation: [{ role: 'user', content: '先前的 Chat 消息' }],
     runtimeSessions: [],
-    voiceCallActive: false,
     MAX_RENDER_CONTEXT_MESSAGES: 30,
     addMessage: (...args) => rendered.push(args),
     setMood: () => assert.fail('hidden Chat mood must not render into Work mode'),
-    voiceConfig: () => ({ autoReadReplies: false }),
-    speakText: () => assert.fail('hidden Chat greeting must not trigger visible Work voice effects'),
     api: { getChatState: async () => ({ activeSessionId: 'chat-session', sessions: [{ id: 'chat-session', messageCount: 2 }] }) },
     refreshLifeState: async () => {}
   };

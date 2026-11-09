@@ -49,7 +49,7 @@ if (!process.versions.electron) {
     const brokenReply = '{"reply":"我在。","memories":["private-metadata"],"mind":';
     await run(`loadHistory([{role:'assistant',content:${JSON.stringify(brokenReply)}},{role:'user',content:${JSON.stringify(brokenReply)}}]);`);
     assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bubble')).map(el => el.textContent)`), ['我在。', brokenReply]);
-    assert.equal(await run(`document.querySelector('.sidebar-account') === null && !document.getElementById('voice-call-button') && !document.getElementById('voice-call-overlay') && document.getElementById('composer').contains(document.getElementById('voice-input-button')) && document.getElementById('settings-overlay').contains(document.getElementById('user-avatar-button'))`),true);
+    assert.equal(await run(`document.querySelector('.sidebar-account') === null && !document.getElementById('voice-call-button') && !document.getElementById('voice-call-overlay') && !document.getElementById('voice-input-button') && !document.getElementById('settings-panel-voice') && document.getElementById('settings-overlay').contains(document.getElementById('user-avatar-button'))`),true);
     await run(`window.maiAppearance.apply({theme:'light'}); loadHistory([
       {role:'user',content:'今天有一点累。',createdAt:'2026-10-21T12:14:00Z'},
       {role:'assistant',content:'辛苦了，学弟。\\n先休息一下吧，今天想和我聊些什么？',createdAt:'2026-10-21T12:15:00Z'},
@@ -121,7 +121,7 @@ if (!process.versions.electron) {
     assert.equal(await run(`document.getElementById('settings-overlay').contains(document.activeElement)`),true);
     await capture('settings-light');
     // Exercise the real settings bindings with an isolated persistence fixture.
-    for (const section of ['appearance','companion','voice','model','data','diagnostics']) {
+    for (const section of ['appearance','companion','model','data','diagnostics']) {
       await run(`document.querySelector('[data-settings-section="${section}"]').click()`);
       assert.equal(await run(`document.querySelectorAll('.settings-panel:not([hidden])').length`),1);
       assert.equal(await run(`document.getElementById('settings-panel-${section}').getBoundingClientRect().width>100`),true);
@@ -164,7 +164,6 @@ if (!process.versions.electron) {
     assert.equal(await run(`document.querySelectorAll('.message--pending').length`),0);
     await capture('chat-recovery');
     await run(`hideNotice();messageInput.value='';resizeInput();loadHistory([{role:'user',content:'今天有一点累。'},{role:'assistant',content:'辛苦了，先休息一下吧。'}]);closeSettings();settingsButton.click();window.maiSettingsView.select('appearance')`); await delay();
-    assert.equal(await run(`!!document.getElementById('voice-engine').value && !!document.getElementById('local-voice-title').textContent && !!document.getElementById('install-local-voice').textContent`),true);
     assert.equal(await run(`!!document.getElementById('choose-custom-wallpaper') && !!document.getElementById('clear-custom-wallpaper') && document.querySelectorAll('#wallpaper-grid .wallpaper-option').length === chatConfig.wallpapers.length`),true);
     await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`); await delay();
     assert.equal(await run(`document.querySelector('.chat-app').inert`),false);

@@ -5,7 +5,7 @@
 ## 三类概念
 
 - **Persistent Data（持久化数据）**：退出后仍保留的 JSON 数据、知识索引、备份与安全存储的 Secret。
-- **Runtime State（运行时状态）**：窗口引用、timer、进行中的网络请求、语音/导入进度、缓存和服务实例；它们不等同于用户记忆，重启后不会从 `memoryState` 恢复。
+- **Runtime State（运行时状态）**：窗口引用、timer、进行中的网络请求、导入进度、缓存和服务实例；它们不等同于用户记忆，重启后不会从 `memoryState` 恢复。
 - **State Owner（状态所有者）**：定义一个共享可变子域正常 mutation 的模块。调用者仍可负责 save、broadcast 和 scheduling（调度）；Owner 不因而接管所有副作用。
 
 Reader（读取方）可以消费公开状态或上下文。Writer（写入方）必须经过 Owner 的公开边界，或在尚未形成边界的旧编排路径中由 Main 明确负责；读取不等于拥有写入权。
