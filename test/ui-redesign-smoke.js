@@ -150,6 +150,7 @@ if (!process.versions.electron) {
     assert.equal(await run(`appearanceThemeInput.value`),'auto');
     for (const [width,height] of [[900,640],[760,680],[1180,820]]) {
       window.setContentSize(width,height); await delay();
+      assert.equal(await run(`(()=>{const r=settingsOverlay.getBoundingClientRect();return r.left===0&&r.top===0&&r.right===innerWidth&&r.bottom===innerHeight&&settingsOverlay.contains(document.elementFromPoint(12,12))})()`),true);
       assert.equal(await run(`(()=>{const r=saveSettingsButton.getBoundingClientRect();return r.width>0&&r.bottom<=innerHeight&&r.left>=0&&document.documentElement.scrollWidth<=innerWidth})()`),true);
       await capture(`settings-product-${width}`);
     }

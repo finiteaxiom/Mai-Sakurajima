@@ -40,9 +40,7 @@
 .ui-chat .send-button { border-radius: 8px; min-width: 50px; height: 38px; }
 .ui-chat .privacy-note { font-size: 11px; }
 .ui-chat .companion-context .conversation-heading__meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--mai-text-secondary); font-size: 12px; padding: 8px; }
-.ui-chat #settings-overlay { padding: 0; background: var(--mai-main-surface); top: 56px; left: 224px; }
-.ui-chat:has(.chat-app.sidebar-collapsed) #settings-overlay { left: 72px; }
-.ui-chat:has(.chat-app.runtime-mode--agent) #settings-overlay { left: 224px; }
+.ui-chat #settings-overlay { padding: 0; background: var(--mai-main-surface); inset: 0; }
 .ui-chat #settings-overlay .settings-page { width: 100%; max-width: none; height: 100%; max-height: none; padding: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--mai-main-surface); display: grid; grid-template-columns: 172px minmax(0,1fr); grid-template-rows: auto minmax(0,1fr) auto; overflow: hidden; animation: none; }
 .ui-chat #settings-overlay .settings-title-row { grid-column: 1 / -1; padding: 18px 26px; margin: 0; border-bottom: 1px solid var(--mai-border); }
 .ui-chat #settings-overlay .settings-title-row h2 { font-size: 20px; margin: 0; }
@@ -74,8 +72,6 @@
 .ui-chat .notice .notice-recover { margin: 6px 0 0 10px; padding: 5px 10px; background: var(--mai-surface); color: var(--mai-text-primary); border: 1px solid var(--mai-border); border-radius: 7px; }
 @media(max-width:1050px) {
   .ui-chat .chat-app { --companion-sidebar-width: 190px; }
-  .ui-chat #settings-overlay { left: 190px; }
-  .ui-chat:has(.chat-app.runtime-mode--agent) #settings-overlay { left: 190px; }
   .ui-chat #settings-overlay .settings-page { grid-template-columns: 140px minmax(0,1fr); }
   .ui-chat .settings-content { padding: 22px; }
   .ui-chat .settings-footer { padding: 12px 18px; flex-wrap: wrap; }
@@ -92,7 +88,6 @@
   .ui-chat .chat-app.small-sidebar-open .sidebar-section { display: block; }
   .ui-chat .chat-app.small-sidebar-open .header-actions .icon-button,
   .ui-chat .chat-app.small-sidebar-open .sidebar-tools .icon-button { justify-content: flex-start; padding-inline: 12px; }
-  .ui-chat #settings-overlay, .ui-chat:has(.chat-app.sidebar-collapsed) #settings-overlay, .ui-chat:has(.chat-app.runtime-mode--agent) #settings-overlay { left: 0; }
   .ui-chat #settings-overlay .settings-page { grid-template-columns: minmax(0,1fr); grid-template-rows: auto auto minmax(0,1fr) auto; }
   .ui-chat .settings-navigation { grid-column: 1; grid-row: 2; display: flex; gap: 4px; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--mai-border); }
   .ui-chat .settings-navigation button { width: auto; white-space: nowrap; padding: 8px 10px; margin: 0; }
