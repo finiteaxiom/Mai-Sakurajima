@@ -17,6 +17,15 @@ class ModelGateway {
     return this.registry.require(options.provider || this.getProviderId());
   }
 
+  requestConfiguration() {
+    const provider = this.provider();
+    return Object.freeze({ ...provider.requestConfiguration?.(), provider: provider.id });
+  }
+
+  configured() {
+    return this.provider().isConfigured?.() === true;
+  }
+
   generate(options = {}) {
     const { tools: _tools, tool_choice: _toolChoice, toolChoice: _toolChoiceAlias, ...request } = options;
     return runtimeDiagnostics.span('model', 'generate', () => this.provider(options).complete({

@@ -190,6 +190,10 @@ class DeepSeekProvider {
     };
   }
 
+  isConfigured() { return Boolean(this.getApiKey()); }
+
+  requestConfiguration() { return { model: resolveModel(this.getModel()) }; }
+
   requestTimeout(messages, timeoutMs) {
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) return timeoutMs;
     const estimate = this.estimateTokens(JSON.stringify(messages));

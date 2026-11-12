@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('maiPet', {
     ipcRenderer.on('timer:state', (_event, state) => callback(state));
   },
   getChatConfig: () => ipcRenderer.invoke('chat:get-config'),
+  refreshLocalModels: () => ipcRenderer.invoke('chat:refresh-local-models'),
   setWallpaper: (wallpaperId) => ipcRenderer.invoke('chat:set-wallpaper', wallpaperId),
   chooseCustomWallpaper: () => ipcRenderer.invoke('chat:choose-custom-wallpaper'),
   clearCustomWallpaper: () => ipcRenderer.invoke('chat:clear-custom-wallpaper'),

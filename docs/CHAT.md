@@ -6,6 +6,8 @@
 
 `ChatService` 负责普通单轮对话的业务编排和可见副作用：会话落盘、记忆/生活更新、状态广播与回复交付。`ChatRequestService` 负责 Prompt、上下文预算、模型请求与结果解析。模型访问只能经过 `ModelGateway -> Provider`。
 
+Chat 可选择 DeepSeek 云端或本机 Ollama。每轮固定 Provider、模型和上下文策略快照；本地模式使用紧凑 Prompt，超限返回可见错误，不删除持久化历史，也不自动切换云端。配置、资源限制和验证范围见 [OLLAMA.md](OLLAMA.md)。Work 的模型路径不随 Chat 设置切换。
+
 Chat 不负责，也不得获得以下能力：工具调用、任意文件读写、Shell 或外部程序执行、任务规划循环、权限申请或自主系统控制。
 
 ### 有限的 Workspace 只读上下文

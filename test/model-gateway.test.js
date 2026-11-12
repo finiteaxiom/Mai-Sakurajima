@@ -46,15 +46,15 @@ test('ModelGateway selects the configured provider and preserves streaming cance
   assert.deepEqual(gateway.providers()[0].models, ['cloud-model']);
 });
 
-test('local provider is an honest unavailable extension point', async () => {
+test('local provider requires an explicit model without silently selecting cloud', async () => {
   const local = new LocalModelProvider();
   const registry = new ModelProviderRegistry().register(local);
   const gateway = new ModelGateway({ registry, getProviderId: () => 'local' });
 
-  assert.equal(gateway.providers()[0].available, false);
+  assert.equal(gateway.providers()[0].available, true);
   assert.equal(gateway.providers()[0].local, true);
   await assert.rejects(gateway.generate({ messages: [{ role: 'user', content: 'hello' }] }), (error) => {
-    assert.equal(error.code, 'provider_unavailable');
+    assert.equal(error.code, 'local_model_missing');
     return true;
   });
 });

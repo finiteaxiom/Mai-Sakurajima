@@ -130,7 +130,7 @@ const { createLlmCacheDiagnosticLogger } = require('./llm-cache-diagnostics');
 const { runConversationMessageBisect, runConversationMessageShapeAudit, runIncrementalSmoke } = require('./deepseek-incremental-smoke');
 const { ModelGateway } = require('./model-gateway');
 const { ModelProviderRegistry, PROVIDER_IDS } = require('./model-provider-registry');
-const { LocalModelProvider } = require('./local-model-provider');
+const { LocalModelProvider, normalizeLocalModel, OLLAMA_ENDPOINT } = require('./local-model-provider');
 const {
   DEEPSEEK_ENDPOINT,
   DEEPSEEK_MODELS,
@@ -272,7 +272,7 @@ const modelProviders = new ModelProviderRegistry()
     getModel: () => settings?.deepseek?.model,
     estimateTokens: estimateTokenCount
   }))
-  .register(new LocalModelProvider());
+  .register(new LocalModelProvider({ getModel: () => settings?.model?.localModel, estimateTokens: estimateTokenCount }));
 const modelGateway = new ModelGateway({
   registry: modelProviders,
   getProviderId: () => settings?.model?.provider || PROVIDER_IDS.DEEPSEEK
@@ -529,7 +529,8 @@ let settings = {
     knowledgeAutoRefresh: true
   },
   model: {
-    provider: PROVIDER_IDS.DEEPSEEK
+    provider: PROVIDER_IDS.DEEPSEEK,
+    localModel: ''
   },
   agent: {
     enabled: false,
@@ -905,7 +906,8 @@ function loadSettings() {
     model: {
       ...settings.model,
       ...(stored.model || {}),
-      provider: PROVIDER_IDS.DEEPSEEK
+      provider: stored.model?.provider === PROVIDER_IDS.LOCAL ? PROVIDER_IDS.LOCAL : PROVIDER_IDS.DEEPSEEK,
+      localModel: normalizeLocalModel(stored.model?.localModel)
     },
     agent: normalizeActionConfiguration({
       ...settings.agent,
@@ -1492,14 +1494,16 @@ function publicDeepSeekSettings() {
   return {
     provider: settings.model.provider,
     providers: modelGateway.providers(),
-    configured: Boolean(getDeepSeekApiKey()),
+    configured: modelGateway.configured(),
+    cloudConfigured: Boolean(getDeepSeekApiKey()),
+    localModel: settings.model.localModel || '',
+    cloudModel: settings.deepseek.model,
     credentialStorageWarning: legacyPlaintextKeyNeedsSecureStorage
       ? '检测到旧版明文 API Key。系统安全存储不可用，因此已保留本机旧值并排除在所有备份和导出之外；请重新启用 Windows 安全存储后再保存 Key。'
       : '',
-    model: DEEPSEEK_MODELS.has(settings.deepseek.model)
-      ? settings.deepseek.model
-      : 'deepseek-v4-flash',
-    endpoint: DEEPSEEK_ENDPOINT,
+    model: settings.model.provider === PROVIDER_IDS.LOCAL ? settings.model.localModel
+      : (DEEPSEEK_MODELS.has(settings.deepseek.model) ? settings.deepseek.model : 'deepseek-v4-flash'),
+    endpoint: settings.model.provider === PROVIDER_IDS.LOCAL ? OLLAMA_ENDPOINT : DEEPSEEK_ENDPOINT,
     personality: PERSONALITY_PROMPTS[settings.deepseek.personality]
       ? settings.deepseek.personality
       : 'classic',
@@ -2309,7 +2313,7 @@ async function restoreUserBackup() {
   };
   const restoredSettings = {
     ...plan.settings,
-    model: { ...plan.settings.model, provider: PROVIDER_IDS.DEEPSEEK },
+    model: { ...plan.settings.model, provider: plan.settings.model?.provider === PROVIDER_IDS.LOCAL ? PROVIDER_IDS.LOCAL : PROVIDER_IDS.DEEPSEEK, localModel: normalizeLocalModel(plan.settings.model?.localModel) },
     appearance: normalizeAppearanceSettings(appearanceForNormalization)
   };
   if (requestedAppearance.wallpaper === CUSTOM_WALLPAPER_ID && hasWallpaper) {
@@ -3304,7 +3308,8 @@ function renderSystemPrompt(
   externalReality = '',
   responseInstruction = '',
   sessionId = '',
-  workspaceContext = ''
+  workspaceContext = '',
+  promptBudget = 0
 ) {
   return chatPromptContext.renderSystemPrompt(
     structured,
@@ -3312,7 +3317,8 @@ function renderSystemPrompt(
     externalReality,
     responseInstruction,
     sessionId,
-    workspaceContext
+    workspaceContext,
+    promptBudget
   );
 }
 
@@ -3374,6 +3380,7 @@ async function runDeepSeekIncrementalSmoke({ useActiveSession = false } = {}) {
     messages,
     maxTokens: 700,
     request: ({ messages: requestMessages, maxTokens, structured }) => modelGateway.generate({
+      provider: PROVIDER_IDS.DEEPSEEK,
       messages: requestMessages,
       maxTokens,
       structured,
@@ -3419,6 +3426,7 @@ async function runDeepSeekSessionMessageBisect() {
     messages: replay.messages,
     maxTokens: 700,
     request: ({ messages: requestMessages, maxTokens, structured }) => modelGateway.generate({
+      provider: PROVIDER_IDS.DEEPSEEK,
       messages: requestMessages,
       maxTokens,
       structured,
@@ -3456,6 +3464,7 @@ async function runDeepSeekSessionMessageShapeAudit() {
     messages: replay.messages,
     maxTokens: 700,
     request: ({ messages: requestMessages, maxTokens, structured }) => modelGateway.generate({
+      provider: PROVIDER_IDS.DEEPSEEK,
       messages: requestMessages,
       maxTokens,
       structured,
@@ -3627,7 +3636,7 @@ function proactiveReasonInstruction(decision = {}) {
 async function createProactiveConversationStarter(decision = {}, requestedSessionId = '', request = null) {
   request?.assertCurrent();
   const fallback = fallbackProactiveMessage(decision);
-  if (!getDeepSeekApiKey()) {
+  if (!modelGateway.configured()) {
     return fallback;
   }
   const session = requestedSessionId
@@ -3850,7 +3859,7 @@ async function generateMomentContent() {
     .map((moment, index) => `${index + 1}. ${moment.content}`)
     .join('\n');
   const fallback = fallbackMomentText(now, memoryState.moments?.length || 0);
-  if (!getDeepSeekApiKey()) {
+  if (!modelGateway.configured()) {
     return { content: fallback, mood: '', source: 'fallback' };
   }
   const instruction = [
@@ -3962,7 +3971,7 @@ async function commentOnMoment(postId, rawContent) {
     broadcastMomentsState();
 
     let reply = null;
-    if (getDeepSeekApiKey()) {
+    if (modelGateway.configured()) {
       try {
         reply = await requestDeepSeek([
           { role: 'user', content: momentReplyPrompt(moment, content) }
@@ -4140,7 +4149,7 @@ async function createGirlfriendFollowUp(followUpCount, waitingMinutes, sessionId
     '不要解释消息的生成机制，不要说自己在读取历史记录，也不要谈及任何幕后技术身份。'
   ].join('');
 
-  if (!getDeepSeekApiKey()) {
+  if (!modelGateway.configured()) {
     const content = fallbackGirlfriendMessage(followUpCount);
     return { content, ...inferActionFromText(content), memories: [] };
   }
@@ -4603,10 +4612,29 @@ async function runUiSmoke(outputPath) {
       throw new Error('Saving current settings changed legacy voice data.');
     }
 
+    if (process.env.MAI_OLLAMA_SMOKE_MODEL) {
+      await contents.executeJavaScript(`(async () => {
+        const api = window.maiPet;
+        const config = await api.getChatConfig();
+        if (config.provider !== 'local' || !config.configured || config.cloudConfigured) throw new Error('Local Chat requires a cloud key or lost provider selection.');
+        const models = await api.refreshLocalModels();
+        if (!models.models.includes(config.model)) throw new Error('Installed local model was not discovered.');
+        const state = await api.newChatSession();
+        const response = await api.sendChat({ sessionId: state.activeSessionId, messages: [{ role: 'user', content: '这是隔离测试，请只简短说一句你好，不新增记忆。' }] });
+        if (!response.content || response.content.trim().startsWith('{')) throw new Error('Local Chat did not return a visible reply.');
+        const saved = await api.getChatState();
+        if (!saved.messages.some(message => message.role === 'assistant' && message.content === response.content)) throw new Error('Local reply was not persisted.');
+        const cloud = await api.saveChatConfig({ ...config, provider: 'deepseek', model: config.cloudModel });
+        if (cloud.model !== config.cloudModel || cloud.localModel !== config.model) throw new Error('Provider switch lost saved models.');
+        await api.saveChatConfig({ ...cloud, provider: 'local', model: config.model });
+      })()`);
+    }
+
     let settingsSaveError = null;
     if (process.env.MAI_UI_SAVE_ERROR_SMOKE === '1') {
       const settingsBytesBeforeFailure = fs.readFileSync(settingsPath());
-      const settingsModelBeforeFailure = settings.deepseek.model;
+      const settingsModelBeforeFailure = publicDeepSeekSettings().model;
+      const settingsPromptBeforeFailure = settings.deepseek.customPrompt;
       const originalRenameSync = fs.renameSync;
       fs.renameSync = (source, target, ...args) => {
         if (path.resolve(target) === path.resolve(settingsPath())) {
@@ -4621,11 +4649,14 @@ async function runUiSmoke(outputPath) {
           setTimeout(() => {
             const model = document.getElementById('model');
             const alternative = Array.from(model.options).find((option) => option.value && option.value !== model.value);
-            if (!alternative) {
+            if (document.getElementById('model-provider').value === 'local') {
+              document.getElementById('custom-prompt').value += ' save-failure-smoke';
+            } else if (!alternative) {
               reject(new Error('Settings smoke could not find an alternate model option.'));
               return;
+            } else {
+              model.value = alternative.value;
             }
-            model.value = alternative.value;
             document.getElementById('save-settings').click();
           }, 100);
           const wait = () => {
@@ -4646,7 +4677,8 @@ async function runUiSmoke(outputPath) {
           throw new Error('Settings bytes changed even though the UI showed a failed save.');
         }
         const currentConfig = await contents.executeJavaScript('window.maiPet.getChatConfig()');
-        settingsSaveError.settingsStateRolledBack = currentConfig.model === settingsModelBeforeFailure;
+        settingsSaveError.settingsStateRolledBack = currentConfig.model === settingsModelBeforeFailure
+          && currentConfig.customPrompt === settingsPromptBeforeFailure;
         if (!settingsSaveError.settingsStateRolledBack) {
           throw new Error('Settings in-memory state changed even though the UI showed a failed save.');
         }
@@ -5504,7 +5536,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('chat:save-config', (_event, input) => {
-    const apiKey = typeof input?.apiKey === 'string' ? input.apiKey.trim() : '';
+    const apiKey = input?.provider !== PROVIDER_IDS.LOCAL && typeof input?.apiKey === 'string' ? input.apiKey.trim() : '';
     const nextSettings = structuredClone(settings);
     const provider = modelProviders.get(input?.provider) || modelProviders.require(PROVIDER_IDS.DEEPSEEK);
     if (provider.metadata?.().available === false) {
@@ -5512,7 +5544,9 @@ function registerIpc() {
       error.code = 'provider_unavailable';
       throw error;
     }
-    const model = DEEPSEEK_MODELS.has(input?.model) ? input.model : 'deepseek-v4-flash';
+    const model = provider.id === PROVIDER_IDS.LOCAL ? normalizeLocalModel(input?.model)
+      : (DEEPSEEK_MODELS.has(input?.model) ? input.model : 'deepseek-v4-flash');
+    if (!model) throw new Error('请刷新并选择已下载的 Ollama 模型。');
     const personality = PERSONALITY_PROMPTS[input?.personality] ? input.personality : 'classic';
     const customPrompt = typeof input?.customPrompt === 'string'
       ? input.customPrompt.trim().slice(0, 1000)
@@ -5525,7 +5559,8 @@ function registerIpc() {
       setStoredApiKey(nextSettings, apiKey, safeStorage);
     }
     nextSettings.model.provider = provider.id;
-    nextSettings.deepseek.model = model;
+    if (provider.id === PROVIDER_IDS.LOCAL) nextSettings.model.localModel = model;
+    else nextSettings.deepseek.model = model;
     nextSettings.deepseek.personality = personality;
     nextSettings.deepseek.customPrompt = customPrompt;
     if (input?.appearance && typeof input.appearance === 'object') {
@@ -5614,14 +5649,16 @@ function registerIpc() {
     return publicDeepSeekSettings();
   });
 
+  ipcMain.handle('chat:refresh-local-models', async () => {
+    return modelProviders.require(PROVIDER_IDS.LOCAL).refreshModels();
+  });
+
   ipcMain.handle('chat:test-connection', async () => {
-    await requestDeepSeek([
-      { role: 'user', content: '请只回复“连接成功”。' }
-    ], {
-      maxTokens: 24,
-      structured: false,
-      diagnostic: createLlmDiagnostic('connection_test', 'chat:test-connection')
+    const result = await modelGateway.generate({
+      ...modelGateway.requestConfiguration(),
+      messages: [{ role: 'user', content: '请只回复：连接成功。' }], maxTokens: 64, structured: false
     });
+    if (!String(result.rawContent || '').trim()) throw new Error('模型未返回正文，请换用其他模型后重试。');
     return { ok: true };
   });
 

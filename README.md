@@ -25,7 +25,7 @@ npm run dist
 ## 当前能力与限制
 
 - Chat 支持连续会话、流式回复、记忆修正与长期陪伴上下文；
-- DeepSeek 是当前可用的模型 Provider；本地 Provider 只是明确返回 unavailable 的未来接口；
+- Chat 支持 DeepSeek 云端与本机 Ollama 已下载的文字模型；在设置的模型页选择来源、刷新模型并保存，无需为 Ollama 配置 API Key。详见 [Ollama 使用与边界](docs/OLLAMA.md)；Work 仍使用独立的 DeepSeek；
 - 桌宠、生活助手、知识资料和主动关心均在受控 Main Process 与窄 IPC 边界内运行；不再提供语音输入、朗读或通话；
 - 知识资料只在用户明确选择文件后导入；前台应用感知默认关闭；
 - Chat 不会访问任意本地文件、执行命令或控制系统。

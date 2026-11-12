@@ -18,7 +18,8 @@ const settingsPath = path.join(userData, 'mai-pet-deepseek-settings.json');
 
 const legacyVoice = { autoReadReplies: false, engine: 'local', customLegacyField: 'preserve-me' };
 fs.mkdirSync(userData, { recursive: true });
-fs.writeFileSync(settingsPath, JSON.stringify({ firstLaunch: false, voice: legacyVoice }, null, 2), 'utf8');
+const localModel = process.env.MAI_OLLAMA_SMOKE_MODEL || '';
+fs.writeFileSync(settingsPath, JSON.stringify({ firstLaunch: false, voice: legacyVoice, ...(localModel ? { model: { provider: 'local', localModel }, deepseek: { model: 'deepseek-v4-pro', proactiveGreetingEnabled: false, girlfriendModeEnabled: false, momentsEnabled: false } } : {}) }, null, 2), 'utf8');
 
 function runUiSmoke(output) {
   const appArguments = path.basename(executable).toLowerCase() === 'electron.exe'
@@ -36,7 +37,7 @@ function runUiSmoke(output) {
     encoding: 'utf8',
     // The nested Chat, wallpaper and two avatar readiness checks can each
     // legitimately wait for their own bounded asynchronous resource load.
-    timeout: 60000,
+    timeout: localModel ? 240000 : 60000,
     windowsHide: false,
     env: {
       ...process.env,
@@ -49,6 +50,11 @@ function runUiSmoke(output) {
   assert.equal(processResult.status, 0, `${processResult.stdout}\n${processResult.stderr}\n${JSON.stringify(result)}`);
   assert.ok(result, 'UI smoke did not create a result file');
   assert.equal(result.ok, true, result.error || JSON.stringify(result));
+  if (localModel) {
+    const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.equal(saved.model.provider, 'local'); assert.equal(saved.model.localModel, localModel);
+    assert.equal(saved.deepseek.model, 'deepseek-v4-pro');
+  }
   assert.deepEqual(JSON.parse(fs.readFileSync(settingsPath, 'utf8')).voice, legacyVoice, 'legacy voice data must survive save and restart without becoming active');
   if (verifySettingsSaveFailure) {
     assert.deepEqual(result.settingsSaveError, {

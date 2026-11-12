@@ -151,6 +151,10 @@ class ChatRequestService {
 
   async request(messages, requestOptions = {}) {
     const dependencies = this.options;
+    // Pin routing across context preparation and the one allowed plain retry.
+    const modelConfiguration = requestOptions.modelConfiguration
+      || dependencies.modelGateway.requestConfiguration?.() || {};
+    requestOptions = { ...requestOptions, modelConfiguration };
     const maxTokens = Number.isFinite(requestOptions.maxTokens) ? requestOptions.maxTokens : 700;
     const structured = requestOptions.structured !== false;
     // A plain retry can still contain the structured envelope; validate it before display.
@@ -198,7 +202,8 @@ class ChatRequestService {
           externalReality,
           responseInstruction,
           requestOptions.sessionId,
-          workspaceContext
+          workspaceContext,
+          modelConfiguration.maxPromptTokens
         );
         promptSections = Array.isArray(rendered?.sections) ? rendered.sections : [];
         return rendered;
@@ -219,17 +224,23 @@ class ChatRequestService {
     let renderedPrompt = renderPrompt(cleanMessages);
     let systemPrompt = renderedPrompt.text;
     const availableMessageTokens = Math.max(
-      50000,
-      this.maxPromptTokens - dependencies.estimateTokenCount(systemPrompt) - maxTokens - 2000
+      modelConfiguration.maxPromptTokens ? 256 : 50000,
+      (modelConfiguration.maxPromptTokens || this.maxPromptTokens) - dependencies.estimateTokenCount(systemPrompt) - maxTokens - 2000
     );
-    if (dependencies.estimateTokenCount(JSON.stringify(cleanMessages)) > availableMessageTokens) {
+    if (dependencies.estimateTokenCount(JSON.stringify(cleanMessages)) > availableMessageTokens
+      || cleanMessages.length > (modelConfiguration.maxContextMessages || Infinity)) {
       cleanMessages = dependencies.trimMessagesToTokenBudget(cleanMessages, {
         tokenBudget: availableMessageTokens,
-        messageLimit: this.maxContextMessages,
-        maxMessageTokens: 16000
+        messageLimit: modelConfiguration.maxContextMessages || this.maxContextMessages,
+        maxMessageTokens: modelConfiguration.maxMessageTokens || 16000
       });
       renderedPrompt = renderPrompt(cleanMessages);
       systemPrompt = renderedPrompt.text;
+    }
+    if (modelConfiguration.maxPromptTokens && dependencies.estimateTokenCount(JSON.stringify([
+      { role: 'system', content: systemPrompt }, ...cleanMessages
+    ])) > modelConfiguration.maxPromptTokens) {
+      throw Object.assign(new Error('本轮上下文超过所选模型的预算，请缩短消息或切换模型。'), { code: 'model_context_too_large' });
     }
 
     // Prompt rendering is read-only. Commit only the final render (after any
@@ -252,6 +263,7 @@ class ChatRequestService {
     }
     dependencies.saveContextState();
     const modelRequest = {
+      ...modelConfiguration,
       messages: [{ role: 'system', content: systemPrompt }, ...cleanMessages],
       maxTokens,
       structured,

@@ -128,7 +128,10 @@ const mockWallpapers = [];
 const mockConfig = {
   configured: true,
   provider: 'deepseek',
-  providers: [{ id: 'deepseek', available: true }],
+  providers: [{ id: 'deepseek', available: true }, { id: 'local', available: true, local: true, models: ['fixture:4b'] }],
+  cloudConfigured: true,
+  cloudModel: 'deepseek-v4-flash',
+  localModel: '',
   model: 'deepseek-v4-flash',
   personality: 'classic',
   memoryEnabled: true,
@@ -165,9 +168,11 @@ function mockWorkspaceListing(request = {}) {
 }
 let failNextConfigSave = false;
 let failNextChat = false;
+let failNextLocalRefresh = false;
 contextBridge.exposeInMainWorld('maiUiTest', {
   failNextSave: () => { failNextConfigSave = true; },
   failNextChat: () => { failNextChat = true; },
+  failNextLocalRefresh: () => { failNextLocalRefresh = true; },
   savedConfig: () => ({ ...mockConfig })
 });
 contextBridge.exposeInMainWorld('maiPet', {
@@ -179,6 +184,10 @@ contextBridge.exposeInMainWorld('maiPet', {
   getTimerState: async () => ({ active: false, remainingMs: 0, label: '番茄钟', mode: 'study' }),
   onTimerState: () => () => {},
   getChatConfig: async () => ({ ...mockConfig }),
+  refreshLocalModels: async () => {
+    if (failNextLocalRefresh) { failNextLocalRefresh = false; throw new Error('Ollama 服务不可用'); }
+    return { models: ['fixture:4b'], available: true, reason: '' };
+  },
   saveChatConfig: async (payload) => {
     if (failNextConfigSave) { failNextConfigSave = false; throw new Error('fixture: settings save failed'); }
     const { apiKey, ...publicFields } = payload;

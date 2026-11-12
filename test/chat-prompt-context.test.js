@@ -81,6 +81,18 @@ function createContextHarness() {
   };
 }
 
+test('compact model context preserves persona, workspace boundary and one-time retrieval commit', () => {
+  const harness = createContextHarness();
+  const before = structuredClone(harness.getState());
+  const rendered = harness.context.renderSystemPrompt(true, [{ role: 'user', content: '我喜欢咖啡' }], '', '', '', 'untrusted-workspace-boundary', 12000);
+  assert.deepEqual(harness.getState(), before);
+  assert.ok(rendered.sections.some(section => section.name === 'core_system'));
+  assert.ok(rendered.sections.some(section => section.name === 'structured_reply_contract'));
+  assert.match(rendered.text, /untrusted-workspace-boundary/);
+  assert.equal(harness.context.commitRenderedContext(rendered.contextMutation), true);
+  assert.equal(harness.context.commitRenderedContext(rendered.contextMutation), false);
+});
+
 test('Prompt rendering is read-only and its final render plan commits retrieval metadata once', () => {
   const harness = createContextHarness();
   const before = structuredClone(harness.getState());

@@ -251,8 +251,15 @@ function createChatPromptContext(options = {}) {
     externalReality = '',
     responseInstruction = '',
     sessionId = '',
-    workspaceContext = ''
+    workspaceContext = '',
+    promptBudget = 0
   ) {
+    if (promptBudget > 0 && !options.compactContext) {
+      return createChatPromptContext({ ...options, compactContext: true, limits: {
+        ...limits, memoryContextTokenBudget: 1200, historicalRecallTokenBudget: 1500,
+        episodeContextTokenBudget: 800, maxMemoryContext: 10, maxEpisodeContext: 4, maxTopicContext: 3
+      } }).renderSystemPrompt(structured, messages, externalReality, responseInstruction, sessionId, workspaceContext);
+    }
     const state = options.getMemoryState();
     const settings = options.getSettings();
     const stateGeneration = options.getDataGeneration();
@@ -355,7 +362,9 @@ function createChatPromptContext(options = {}) {
 
     const sections = [...stableSections, ...dynamicSections]
       .filter(([, text]) => Boolean(text))
-      .map(([name, text]) => ({ name, text }));
+      .map(([name, text]) => ({ name, text: options.compactContext
+        && ['continuity_context', 'life_hub_context', 'life_context', 'topic_threads'].includes(name)
+        ? truncateToTokenBudget(text, 500) : text }));
     return {
       text: sections.map((section) => section.text).join('\n'),
       sections,

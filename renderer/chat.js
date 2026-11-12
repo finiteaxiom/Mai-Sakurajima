@@ -124,6 +124,10 @@ const keyHint = document.getElementById('key-hint');
 const modelProviderSelect = document.getElementById('model-provider');
 const modelProviderHint = document.getElementById('model-provider-hint');
 const modelSelect = document.getElementById('model');
+const refreshLocalModelsButton = document.getElementById('refresh-local-models');
+let localModelsSnapshot = null;
+let localModelRefreshGeneration = 0;
+let modelDrafts = {};
 const personalitySelect = document.getElementById('personality');
 const customPromptInput = document.getElementById('custom-prompt');
 const memoryEnabledInput = document.getElementById('memory-enabled');
@@ -782,11 +786,11 @@ function setConnection(config) {
     : null;
   const providerAvailable = activeProvider?.available !== false;
   connectionDot.classList.toggle('connection-dot--online', config.configured && providerAvailable);
-  const modelLabel = config.model === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash';
+  const modelLabel = config.provider === 'local' ? (config.model || 'Ollama') : config.model === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash';
   connectionLabel.textContent = config.configured && providerAvailable
     ? `已配置 · ${modelLabel} · ${PERSONALITY_LABELS[config.personality] || PERSONALITY_LABELS.classic}`
-    : activeProvider?.reason || '尚未设置 DeepSeek API Key';
-  clearKeyButton.disabled = !config.configured;
+    : config.provider === 'local' ? '请在设置中选择本地模型' : '尚未设置 DeepSeek API Key';
+  clearKeyButton.disabled = !(config.cloudConfigured ?? config.configured);
   renderCompanionWorkspace();
 }
 
@@ -999,16 +1003,48 @@ function hideNotice() {
   notice.classList.add('notice--hidden');
 }
 
+function renderModelSettings() {
+  const local = modelProviderSelect.value === 'local';
+  document.getElementById('cloud-key-field').hidden = local;
+  clearKeyButton.hidden = local;
+  refreshLocalModelsButton.hidden = !local;
+  document.getElementById('model-endpoint').textContent = local ? 'http://127.0.0.1:11434' : 'https://api.deepseek.com/chat/completions';
+  modelProviderHint.textContent = local ? (localModelsSnapshot?.reason || '请启动 Ollama，刷新并选择已下载的模型。') : '使用 DeepSeek 云端 API；密钥只保存在本机。';
+  const models = local ? (localModelsSnapshot?.models || chatConfig.providers?.find(item => item.id === 'local')?.models || []) : ['deepseek-v4-flash', 'deepseek-v4-pro'];
+  const wanted = modelDrafts[modelProviderSelect.value] || '';
+  modelSelect.replaceChildren();
+  const add = (value, label) => { const option = document.createElement('option'); option.value = value; option.textContent = label; modelSelect.appendChild(option); };
+  if (local) add('', models.length ? '请选择本地模型' : '请刷新本机模型');
+  for (const model of models) add(model, local ? model : model === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : 'DeepSeek V4 Flash');
+  if (local && wanted && !models.includes(wanted)) add(wanted, `${wanted}（尚未确认可用）`);
+  modelSelect.value = wanted || (local ? '' : 'deepseek-v4-flash');
+}
+
+async function refreshLocalModels() {
+  const generation = ++localModelRefreshGeneration;
+  refreshLocalModelsButton.disabled = true;
+  modelProviderHint.textContent = '正在读取本机 Ollama 模型…';
+  try {
+    const snapshot = await api.refreshLocalModels();
+    if (generation !== localModelRefreshGeneration) return;
+    localModelsSnapshot = snapshot;
+    if (modelProviderSelect.value === 'local') {
+      modelDrafts.local = modelSelect.value;
+      renderModelSettings();
+    }
+  } catch (error) {
+    if (generation === localModelRefreshGeneration && modelProviderSelect.value === 'local') modelProviderHint.textContent = errorText(error);
+  } finally {
+    if (generation === localModelRefreshGeneration) refreshLocalModelsButton.disabled = false;
+  }
+}
+
 function populateSettings() {
   window.maiSettingsView?.clean();
   apiKeyInput.value = '';
   modelProviderSelect.value = chatConfig.provider || 'deepseek';
-  const activeProvider = Array.isArray(chatConfig.providers)
-    ? chatConfig.providers.find((provider) => provider.id === modelProviderSelect.value)
-    : null;
-  modelProviderHint.textContent = activeProvider?.reason
-    || '当前版本使用 DeepSeek；本地模型接入后才会开放。';
-  modelSelect.value = chatConfig.model;
+  modelDrafts = { deepseek: chatConfig.cloudModel || (chatConfig.provider !== 'local' ? chatConfig.model : 'deepseek-v4-flash'), local: chatConfig.localModel || (chatConfig.provider === 'local' ? chatConfig.model : '') };
+  renderModelSettings();
   personalitySelect.value = chatConfig.personality || 'classic';
   customPromptInput.value = chatConfig.customPrompt || '';
   memoryEnabledInput.checked = chatConfig.memoryEnabled !== false;
@@ -1035,7 +1071,7 @@ function populateSettings() {
   appearanceScaleInput.value = String(appearance.uiScale || 100);
   appearanceMotionInput.value = appearance.motion || 'full';
   updateAppearancePreview();
-  keyHint.textContent = chatConfig.configured
+  keyHint.textContent = (chatConfig.cloudConfigured ?? chatConfig.configured)
     ? '已安全保存一个 Key；留空保存不会覆盖它。'
     : 'Key 会使用 Windows 系统加密并仅保存在本机。';
 }
@@ -1076,6 +1112,7 @@ function openSettings(section) {
   }
   window.maiSettingsView?.open(typeof section === 'string' ? section : !chatConfig.configured ? 'model' : undefined);
   settingsOverlay.classList.remove('overlay--hidden');
+  if (modelProviderSelect.value === 'local' && !localModelsSnapshot) refreshLocalModels();
   setTimeout(() => {
     if (!settingsOverlay.classList.contains('overlay--hidden')) window.maiSettingsView?.focus();
   }, 50);
@@ -1670,7 +1707,7 @@ function renderCompanionWorkspace() {
   activeSessionTitle.textContent = title;
   workspaceLocation.textContent = title;
   conversationModelBadge.textContent = chatConfig.provider === 'local'
-    ? '本地模型'
+    ? `Ollama · ${chatConfig.model || '未选择'}`
     : (chatConfig.model === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : 'DeepSeek V4 Flash');
   conversationMemoryBadge.textContent = chatConfig.memoryEnabled === false ? '记忆已关闭' : '记忆已开启';
   setCapabilityChips(['长期记忆', '现实时间', '主动关心']);
@@ -2352,7 +2389,7 @@ function resizeInput() {
 
 function configPayload() {
   return {
-    apiKey: apiKeyInput.value,
+    apiKey: modelProviderSelect.value === 'deepseek' ? apiKeyInput.value : '',
     provider: modelProviderSelect.value,
     model: modelSelect.value,
     personality: personalitySelect.value,
@@ -3801,6 +3838,12 @@ document.addEventListener('keydown', (event) => {
 });
 saveSettingsButton.addEventListener('click', saveSettings);
 testConnectionButton.addEventListener('click', testConnection);
+modelSelect.addEventListener('change', () => { modelDrafts[modelProviderSelect.value] = modelSelect.value; });
+modelProviderSelect.addEventListener('change', () => {
+  renderModelSettings();
+  if (modelProviderSelect.value === 'local') refreshLocalModels();
+});
+refreshLocalModelsButton.addEventListener('click', refreshLocalModels);
 clearKeyButton.addEventListener('click', clearApiKey);
 previewGreetingButton.addEventListener('click', previewGreeting);
 previewGirlfriendButton.addEventListener('click', previewGirlfriendMessage);

@@ -615,9 +615,9 @@
      模型连接
     </h3>
     <p class="settings-description">
-     模型请求所需上下文会发送至所选服务。密钥仅在本机安全保存。
+     本地模式将聊天上下文发送到本机 Ollama，不会自动回退云端。Work 仍单独使用 DeepSeek；天气等已开启的联网功能不受此选择影响。
     </p>
-    <label class="field">
+    <label class="field" id="cloud-key-field">
      <span>
       API Key
      </span>
@@ -634,12 +634,12 @@
       <option value="deepseek">
        DeepSeek 云端 API
       </option>
-      <option disabled="" value="local">
-       本地模型（接口已预留，当前尚不可用）
+      <option value="local">
+       Ollama 本地模型
       </option>
      </select>
      <small id="model-provider-hint">
-      当前版本使用 DeepSeek；本地模型接入后才会开放。
+      云端使用 DeepSeek；本地连接本机 Ollama。
      </small>
     </label>
     <label class="field">
@@ -659,10 +659,11 @@
      <span>
       接口地址
      </span>
-     <code>
+     <code id="model-endpoint">
       https://api.deepseek.com/chat/completions
      </code>
     </div>
+    <button class="button button--secondary" id="refresh-local-models" type="button" hidden>刷新本机模型</button>
     <button class="button button--danger" id="clear-key" type="button">
      清除 Key
     </button>

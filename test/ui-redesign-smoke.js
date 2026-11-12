@@ -126,6 +126,14 @@ if (!process.versions.electron) {
       assert.equal(await run(`document.querySelectorAll('.settings-panel:not([hidden])').length`),1);
       assert.equal(await run(`document.getElementById('settings-panel-${section}').getBoundingClientRect().width>100`),true);
     }
+    await run(`window.maiSettingsView.select('model');modelProviderSelect.value='local';modelProviderSelect.dispatchEvent(new Event('change',{bubbles:true}));`);
+    await delay();
+    assert.equal(await run(`document.getElementById('cloud-key-field').hidden && !refreshLocalModelsButton.hidden && Array.from(modelSelect.options).some(option=>option.value==='fixture:4b')`),true);
+    await run(`modelSelect.value='fixture:4b';modelSelect.dispatchEvent(new Event('change',{bubbles:true}));window.maiUiTest.failNextLocalRefresh();refreshLocalModels()`);
+    assert.equal(await run(`modelSelect.value==='fixture:4b' && modelProviderHint.textContent.includes('Ollama') && !refreshLocalModelsButton.disabled`),true);
+    await capture('ollama-settings');
+    await run(`modelProviderSelect.value='deepseek';modelProviderSelect.dispatchEvent(new Event('change',{bubbles:true}));`);
+    assert.equal(await run(`modelSelect.value==='deepseek-v4-flash' && !document.getElementById('cloud-key-field').hidden`),true);
     await run(`window.maiSettingsView.select('companion');customPromptInput.value='保留分类草稿';customPromptInput.dispatchEvent(new Event('input',{bubbles:true}));window.maiSettingsView.select('model');`);
     assert.equal(await run(`customPromptInput.value`),'保留分类草稿');
     await run(`closeSettings();openSettings('companion')`); await delay();

@@ -41,7 +41,7 @@ ChatService -> ChatRequestService -> ModelGateway -> Provider
 
 Chat 只负责普通对话、Persona、conversation、Memory / relationship context、Chat model request 与 streaming response。业务层不得绕过 `ModelGateway` 判断 Provider 差异。
 
-Chat 不得调用 `AgentLoop`、Tool Runtime、Action Runtime 或 `agent:*` IPC；不得使用 `tools`、`tool_choice` 或 `tool_calls`；不得自行发起 filesystem、Shell、process、network action 或任务循环。DeepSeek 是当前可用的 Chat Provider；本地模型仍是诚实的 unavailable 占位。
+Chat 不得调用 `AgentLoop`、Tool Runtime、Action Runtime 或 `agent:*` IPC；不得使用 `tools`、`tool_choice` 或 `tool_calls`；不得自行发起 filesystem、Shell、process、network action 或任务循环。Chat 支持用户明确选择的 DeepSeek 云端与 Ollama 本地 Provider；Ollama 仅访问固定回环地址上已安装的本地文字模型，不下载模型、不调用云端模型，也不在失败时自动切换 Provider。单轮上下文准备、生成和纯文本重试必须固定同一 Provider 与模型；本地上下文预算不得改变持久化历史。Work 继续使用独立的 DeepSeek Adapter。
 
 唯一的只读例外是 `workspace-capability:*`：它是 Main Process 持有的、按当前 Chat session 绑定且可撤销的临时授权网关，不属于 Agent、Tool Runtime 或通用能力系统。Renderer 只能请求状态、打开原生目录选择、撤销授权，以及对相对路径执行一次 `list` 或 `read`；它不能传入真实 root、绝对路径、递归扫描、搜索、写入或任意工具名。网关必须继续经 `WorkspaceFileService -> WorkspaceSandbox`，只允许安全文本类型与 128 KiB 原始文件上限，并对 `.env`、密钥、凭据和令牌类文件 fail closed。读取结果只能以有字符预算、标注为不可信的单次临时上下文进入既有 `ChatRequestService`；不得进入消息持久化、长期记忆、Agent、Task、Tool 调用或后续循环。用户没有明确授权时 Chat 不得读取任何 Workspace，也不得复用 Work Project 的 root。
 

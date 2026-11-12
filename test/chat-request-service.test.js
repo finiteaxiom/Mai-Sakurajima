@@ -65,6 +65,44 @@ function createHarness(overrides = {}) {
   return { service: new ChatRequestService(options), calls };
 }
 
+test('provider and model are pinned through async context preparation and plain fallback', async () => {
+  let selected = 'local'; let snapshots = 0; const requests = [];
+  const gateway = {
+    requestConfiguration: () => { snapshots++; return { provider: selected, model: 'sample:4b', maxPromptTokens: 12000 }; },
+    stream() { assert.fail('not streaming'); },
+    async generate(request) { requests.push(request); return { rawContent: requests.length === 1 ? '' : '你好', finishReason: 'stop' }; }
+  };
+  const { service } = createHarness({ modelGateway: gateway, realityContext: async () => { selected = 'deepseek'; return ''; } });
+  const reply = await service.request([{ role: 'user', content: '你好' }]);
+  assert.equal(reply.content, '你好'); assert.equal(snapshots, 1);
+  assert.deepEqual(requests.map(request => [request.provider, request.model]), [['local', 'sample:4b'], ['local', 'sample:4b']]);
+});
+
+test('a bounded provider trims old context and rejects an oversized system before saving context', async () => {
+  const first = createHarness();
+  first.service.options.modelGateway.requestConfiguration = () => ({ maxPromptTokens: 3000, maxContextMessages: 40, maxMessageTokens: 2000 });
+  await first.service.request([{ role: 'user', content: 'old'.repeat(1500) }, { role: 'user', content: 'new' }]);
+  assert.equal(first.calls.find(call => call[0] === 'generate')[1].messages.length, 2);
+  const second = createHarness({ buildSystemPrompt: () => 'x'.repeat(4000) });
+  second.service.options.modelGateway.requestConfiguration = () => ({ maxPromptTokens: 3000 });
+  await assert.rejects(second.service.request([{ role: 'user', content: 'new' }]), { code: 'model_context_too_large' });
+  assert.equal(second.calls.includes('save-context'), false);
+});
+
+test('local message count budget keeps recent short history without mutating source', async () => {
+  const context = require('../context-engine');
+  const { service, calls } = createHarness({
+    estimateTokenCount: context.estimateTokenCount,
+    trimMessagesToTokenBudget: context.trimMessagesToTokenBudget
+  });
+  service.options.modelGateway.requestConfiguration = () => ({ maxPromptTokens: 12000, maxContextMessages: 40, maxMessageTokens: 2000 });
+  const messages = Array.from({ length: 80 }, (_, index) => ({ role: index % 2 ? 'user' : 'assistant', content: `消息 ${index}` }));
+  const original = structuredClone(messages);
+  await service.request(messages);
+  assert.deepEqual(calls.find(call => call[0] === 'generate')[1].messages.slice(1), messages.slice(-40));
+  assert.deepEqual(messages, original);
+});
+
 test('Chat request service builds Chat context and uses tool-free generation', async () => {
   const { service, calls } = createHarness();
   const result = await service.request([{ role: 'user', content: '你好' }], {
