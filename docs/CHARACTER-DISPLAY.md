@@ -17,7 +17,9 @@
 
 ## 状态与回退
 
-发布候选的默认头像与应用图标为中性 M 标识，由 `scripts/generate-brand-icons.js` 在本地绘制，无外部图片输入；PNG 为 512×512，ICO 提供九种标准尺寸。该默认值不覆盖用户已选择的本地头像。
+应用图标使用用户确认的第一版「雾粉底、奶白圆眼兔头」设计。原稿保存在 `assets/branding/mai-rabbit-approved.png`，由 imagegen 生成并经用户选定；`node scripts/generate-brand-icons.js` 只做尺寸转换和编码，生成 `assets/mai-icon.png`（512×512）及 `assets/mai-icon.ico`（16、20、24、32、40、48、64、128、256px）。窗口和托盘沿用 PNG，Windows 安装程序和应用可执行文件沿用 ICO；原稿不随安装包分发。
+
+`assets/mai-profile.png` 继续作为麻衣头像的中性 M 占位图，不由图标导出脚本覆盖；用户未设置头像时使用的 `mai-icon.png` 占位图随应用图标更新。以上默认资源均不覆盖用户已选择的本地头像。
 
 - 当前穿着来自 Main 的衣橱快照/事件；正在预览是 Renderer 的临时选择。点击服装不保存，明确点击应用才请求保存。
 - 保存中禁用选择与重复应用；保存成功后显示结果，失败保留旧穿着与预览。拖动期间切换仍由桌宠在释放后应用。
